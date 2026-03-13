@@ -36,6 +36,7 @@ from tt_runtime import (
     get_device_string,
     init_tt_device,
     maybe_set_tt_compile_options,
+    optimizer_step,
     sync,
 )
 
@@ -386,7 +387,7 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
                 raise RuntimeError(f"Non-finite training loss at step {step}: {loss.item()}")
             train_loss = loss.detach()
             (loss / cfg.grad_accum_steps).backward()
-        optimizer.step()
+        optimizer_step(optimizer, backend)
         optimizer.zero_grad(set_to_none=True)
         sync(backend)
         dt = time.time() - t0

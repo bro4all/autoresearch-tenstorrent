@@ -119,6 +119,14 @@ def sync(backend: Optional[str] = None) -> None:
     torch_xla.sync(wait=True)
 
 
+def optimizer_step(optimizer, backend: Optional[str] = None) -> None:
+    if get_backend(backend) != "tt":
+        optimizer.step()
+        return
+    _, xm, _ = _import_torch_xla()
+    xm.optimizer_step(optimizer, barrier=False)
+
+
 def get_device_string(device=None) -> str:
     backend = get_backend()
     if backend != "tt":

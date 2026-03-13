@@ -204,6 +204,10 @@ def load_config() -> TrainConfig:
             "AUTORESEARCH_ENABLE_TT_COMPILE", cfg.enable_tt_compile
         ),
         "seed": _env_override("AUTORESEARCH_SEED", cfg.seed),
+        "learning_rate": _env_override("AUTORESEARCH_LEARNING_RATE", cfg.learning_rate),
+        "weight_decay": _env_override("AUTORESEARCH_WEIGHT_DECAY", cfg.weight_decay),
+        "warmup_steps": _env_override("AUTORESEARCH_WARMUP_STEPS", cfg.warmup_steps),
+        "bf16": _env_override("AUTORESEARCH_BF16", cfg.bf16),
     }
     return replace(cfg, **overrides)
 
