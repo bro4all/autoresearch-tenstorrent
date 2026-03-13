@@ -11,7 +11,6 @@ import argparse
 import math
 import os
 import pickle
-import random
 import shutil
 import sys
 import time
@@ -356,21 +355,28 @@ def prepare_synthetic_cache(cache_dir: Path | None = None, seed: int = 123) -> N
     data_dir.mkdir(parents=True, exist_ok=True)
     tokenizer_dir.mkdir(parents=True, exist_ok=True)
 
-    rng = random.Random(seed)
-    train_docs = []
-    for i in range(96):
-        topic = ["tt", "autoresearch", "tokenizer", "causal lm", "rope"][i % 5]
-        train_docs.append(
-            f"Document {i}. {topic} baseline text. "
-            f"Numbers {i} {i+1} {i+2}. Repeated phrase {topic}. "
-            f"Seeded noise {rng.randint(0, 9999)}."
+    topics = ["tt", "autoresearch", "tokenizer", "causal lm", "rope"]
+    verbs = ["packs", "scores", "trains", "predicts"]
+    objects = ["tokens", "bytes", "sequences", "batches"]
+    markers = ["alpha", "beta", "gamma", "delta"]
+
+    def make_doc(i: int) -> str:
+        pattern = i % 16
+        topic = topics[pattern % len(topics)]
+        pair = topics[(pattern + 1) % len(topics)]
+        verb = verbs[pattern % len(verbs)]
+        obj = objects[(pattern // 2) % len(objects)]
+        marker = markers[(pattern // 3) % len(markers)]
+        return (
+            f"Document {pattern}. "
+            f"{topic} model {verb} {obj}. "
+            f"Pair {pair}. Marker {marker}. "
+            f"Next token after topic {topic} is pair {pair}. "
+            f"Repeat topic {topic}. Repeat verb {verb}. Repeat marker {marker}."
         )
-    val_docs = []
-    for i in range(32):
-        val_docs.append(
-            f"Validation {i}. autoresearch tenstorrent validation sequence. "
-            f"Predict the next word after baseline and count {i}."
-        )
+
+    train_docs = [make_doc(i) for i in range(96)]
+    val_docs = [make_doc(i + 8) for i in range(32)]
     _write_parquet(data_dir / "shard_00000.parquet", train_docs[:48])
     _write_parquet(data_dir / "shard_00001.parquet", train_docs[48:])
     _write_parquet(data_dir / VAL_FILENAME, val_docs)
