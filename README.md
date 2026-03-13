@@ -54,6 +54,8 @@ The official TT-XLA docs also publish a Docker path. Start the container:
 export TT_VISIBLE_DEVICES=0
 docker run -it --rm \
   -e TT_VISIBLE_DEVICES="${TT_VISIBLE_DEVICES}" \
+  -e PJRT_DEVICE=TT \
+  -e XLA_STABLEHLO_COMPILE=1 \
   --device /dev/tenstorrent \
   -v /dev/hugepages-1G:/dev/hugepages-1G \
   -v "$(pwd)":/workspace \
@@ -116,6 +118,8 @@ TT environment check:
 ```bash
 TT_VISIBLE_DEVICES=0 ./scripts/check_tt_env.sh
 ```
+
+The TT shell wrappers retry once after a recoverable TT bring-up failure by default on N300 hosts. If you want an unconditional host-side reset before the run, set `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Use `AUTORESEARCH_TT_RESET_WAIT_SECS` to change the post-reset wait.
 
 60-second TT smoke run:
 
@@ -218,6 +222,12 @@ If a TT run fails with unsupported ops or lazy graph issues:
 - Force CPU with `AUTORESEARCH_BACKEND=cpu` to separate correctness bugs from lowering bugs.
 - Keep `AUTORESEARCH_ENABLE_SLIDING_WINDOW=0`.
 - Keep `AUTORESEARCH_ENABLE_TT_COMPILE=0`.
+
+If a TT run fails before model code with messages like `Read unexpected run_mailbox value from core` or `Timeout waiting for Ethernet core service remote IO request flush`:
+
+- Use [`scripts/check_tt_env.sh`](/workdir/autoresearch-tenstorrent/scripts/check_tt_env.sh), [`scripts/run_tt_smoke.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_smoke.sh), or [`scripts/run_tt_baseline.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_baseline.sh). They retry once after `tt-smi --reset 0`.
+- Set `AUTORESEARCH_TT_INIT_RETRIES` or `AUTORESEARCH_TT_RESET_WAIT_SECS` if you need a different recovery policy.
+- Set `TT_VISIBLE_DEVICES` before importing `jax` or `torch_xla`.
 - Use the TT-XLA eager debugging path from [`tt_runtime.py`](/workdir/autoresearch-tenstorrent/tt_runtime.py) only for diagnosis, not as the training baseline.
 
 If TT-XLA initialization fails:
@@ -225,6 +235,7 @@ If TT-XLA initialization fails:
 - Re-run `./scripts/check_tt_env.sh`.
 - Confirm `/dev/tenstorrent` exists and `tt-smi -ls` lists hardware.
 - On N300, set `TT_VISIBLE_DEVICES=0` before importing `jax` or `torch_xla`. Prefer `TT_VISIBLE_DEVICES` over the older `TT_METAL_VISIBLE_DEVICES`.
+- The repo launch scripts retry after a recoverable TT startup failure by default. For direct `python train.py` runs, use `AUTORESEARCH_TT_RESET_BEFORE_INIT=1` if the previous TT process died during startup.
 - Confirm the TT-XLA runtime version matches the installed firmware/device stack.
 - If the runtime fails during startup with hugepage pinning or NOC-address warnings, fix the host/container hugepage setup before debugging model code. Those failures happen before this repo's training code is involved.
 - If startup logs include `Read unexpected run_mailbox value` or `Fabric Router Sync: Timeout`, reset the board, wait for the links to retrain, and retry:

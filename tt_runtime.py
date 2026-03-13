@@ -2,9 +2,19 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import subprocess
+import time
 from functools import lru_cache
 from typing import Dict, Optional
+
+
+def _prime_tt_environment() -> None:
+    if "TT_VISIBLE_DEVICES" not in os.environ and "TT_METAL_VISIBLE_DEVICES" not in os.environ:
+        # On N300, exposing PCIe device 0 also exposes the Ethernet-connected peer.
+        os.environ["TT_VISIBLE_DEVICES"] = os.environ.get("AUTORESEARCH_TT_VISIBLE_DEVICES", "0")
+    os.environ.setdefault("PJRT_DEVICE", "TT")
+    os.environ.setdefault("XLA_STABLEHLO_COMPILE", "1")
 
 
 def _import_torch_xla():
@@ -15,8 +25,35 @@ def _import_torch_xla():
     return torch_xla, xm, xr
 
 
+def _first_visible_device() -> str:
+    visible = os.environ.get("TT_VISIBLE_DEVICES") or os.environ.get("TT_METAL_VISIBLE_DEVICES") or "0"
+    return visible.split(",")[0].strip() or "0"
+
+
+def _env_flag(name: str, default: str = "0") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _maybe_reset_before_init() -> None:
+    if not _env_flag("AUTORESEARCH_TT_RESET_BEFORE_INIT"):
+        return
+    if not shutil.which("tt-smi"):
+        return
+    device = os.environ.get("AUTORESEARCH_TT_RESET_DEVICE", _first_visible_device())
+    wait_seconds = int(os.environ.get("AUTORESEARCH_TT_RESET_WAIT_SECS", "30"))
+    print(f"Resetting Tenstorrent device {device} before TT-XLA init")
+    proc = subprocess.run(["tt-smi", "--reset", device], check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip()
+        stdout = proc.stdout.strip()
+        detail = stderr or stdout or f"exit code {proc.returncode}"
+        raise RuntimeError(f"tt-smi --reset {device} failed: {detail}")
+    time.sleep(max(wait_seconds, 0))
+
+
 @lru_cache(maxsize=1)
 def tt_runtime_importable() -> bool:
+    _prime_tt_environment()
     try:
         _import_torch_xla()
         return True
@@ -50,13 +87,10 @@ def get_backend(requested: Optional[str] = None) -> str:
 
 
 def init_tt_device():
+    _prime_tt_environment()
+    _maybe_reset_before_init()
     if not tt_runtime_importable():
         raise RuntimeError("torch_xla is not importable; install the TT-XLA runtime first")
-    if "TT_VISIBLE_DEVICES" not in os.environ and "TT_METAL_VISIBLE_DEVICES" not in os.environ:
-        # N300 exposes a PCIe-visible chip plus its Ethernet-connected peer.
-        os.environ["TT_VISIBLE_DEVICES"] = os.environ.get("AUTORESEARCH_TT_VISIBLE_DEVICES", "0")
-    os.environ.setdefault("PJRT_DEVICE", "TT")
-    os.environ.setdefault("XLA_STABLEHLO_COMPILE", "1")
     _, xm, xr = _import_torch_xla()
     xr.set_device_type("TT")
     device = xm.xla_device()

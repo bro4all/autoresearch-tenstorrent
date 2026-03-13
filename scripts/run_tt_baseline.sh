@@ -3,9 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
+source "${ROOT_DIR}/scripts/tt_common.sh"
 
 export AUTORESEARCH_BACKEND="${AUTORESEARCH_BACKEND:-tt}"
 export AUTORESEARCH_PROFILE="${AUTORESEARCH_PROFILE:-tt_singlechip}"
-export TT_VISIBLE_DEVICES="${TT_VISIBLE_DEVICES:-${AUTORESEARCH_TT_VISIBLE_DEVICES:-0}}"
+export AUTORESEARCH_TT_RESET_BEFORE_INIT="${AUTORESEARCH_TT_RESET_BEFORE_INIT:-0}"
+tt_set_visible_devices
+tt_maybe_host_reset
 
-exec python train.py "$@"
+tt_run_with_recovery python train.py "$@"
