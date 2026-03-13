@@ -9,6 +9,10 @@ from functools import lru_cache
 from typing import Dict, Optional
 
 
+def _tt_smi_timeout_seconds() -> int:
+    return int(os.environ.get("AUTORESEARCH_TT_SMI_TIMEOUT_SECS", "30"))
+
+
 def _prime_tt_environment() -> None:
     if "TT_VISIBLE_DEVICES" not in os.environ and "TT_METAL_VISIBLE_DEVICES" not in os.environ:
         # On N300, exposing PCIe device 0 also exposes the Ethernet-connected peer.
@@ -42,7 +46,16 @@ def _maybe_reset_before_init() -> None:
     device = os.environ.get("AUTORESEARCH_TT_RESET_DEVICE", _first_visible_device())
     wait_seconds = int(os.environ.get("AUTORESEARCH_TT_RESET_WAIT_SECS", "30"))
     print(f"Resetting Tenstorrent device {device} before TT-XLA init")
-    proc = subprocess.run(["tt-smi", "--reset", device], check=False, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(
+            ["tt-smi", "--reset", device],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_tt_smi_timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"tt-smi --reset {device} timed out after {exc.timeout}s") from exc
     if proc.returncode != 0:
         stderr = proc.stderr.strip()
         stdout = proc.stdout.strip()
@@ -70,6 +83,7 @@ def tt_hardware_available() -> bool:
             capture_output=True,
             text=True,
             check=False,
+            timeout=_tt_smi_timeout_seconds(),
         )
         return proc.returncode == 0 and "Wormhole" in proc.stdout
     except Exception:
@@ -118,6 +132,7 @@ def get_device_string(device=None) -> str:
             capture_output=True,
             text=True,
             check=False,
+            timeout=_tt_smi_timeout_seconds(),
         )
         if proc.returncode == 0:
             summary = " ".join(line.strip() for line in proc.stdout.splitlines() if "Wormhole" in line)

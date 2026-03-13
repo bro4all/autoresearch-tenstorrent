@@ -119,7 +119,7 @@ TT environment check:
 TT_VISIBLE_DEVICES=0 ./scripts/check_tt_env.sh
 ```
 
-The TT shell wrappers retry once after a recoverable TT bring-up failure by default on N300 hosts. If you want an unconditional host-side reset before the run, set `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Use `AUTORESEARCH_TT_RESET_WAIT_SECS` to change the post-reset wait.
+The TT shell wrappers retry once after a recoverable TT bring-up failure by default on N300 hosts. If you want an unconditional host-side reset before the run, set `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Use `AUTORESEARCH_TT_RESET_WAIT_SECS` to change the post-reset wait and `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` to bound `tt-smi` calls on wedged hosts.
 
 60-second TT smoke run:
 
@@ -226,7 +226,7 @@ If a TT run fails with unsupported ops or lazy graph issues:
 If a TT run fails before model code with messages like `Read unexpected run_mailbox value from core` or `Timeout waiting for Ethernet core service remote IO request flush`:
 
 - Use [`scripts/check_tt_env.sh`](/workdir/autoresearch-tenstorrent/scripts/check_tt_env.sh), [`scripts/run_tt_smoke.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_smoke.sh), or [`scripts/run_tt_baseline.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_baseline.sh). They retry once after `tt-smi --reset 0`.
-- Set `AUTORESEARCH_TT_INIT_RETRIES` or `AUTORESEARCH_TT_RESET_WAIT_SECS` if you need a different recovery policy.
+- Set `AUTORESEARCH_TT_INIT_RETRIES`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, or `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` if you need a different recovery policy.
 - Set `TT_VISIBLE_DEVICES` before importing `jax` or `torch_xla`.
 - Use the TT-XLA eager debugging path from [`tt_runtime.py`](/workdir/autoresearch-tenstorrent/tt_runtime.py) only for diagnosis, not as the training baseline.
 

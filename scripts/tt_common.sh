@@ -18,11 +18,12 @@ tt_reset_and_wait() {
     echo "tt-smi is not available; cannot reset TT device after init failure." >&2
     return 1
   fi
-  local device wait_secs
+  local device wait_secs smi_timeout
   device="$(tt_reset_device_id)"
   wait_secs="${AUTORESEARCH_TT_RESET_WAIT_SECS:-30}"
+  smi_timeout="${AUTORESEARCH_TT_SMI_TIMEOUT_SECS:-30}"
   echo "Resetting Tenstorrent device ${device} and waiting ${wait_secs}s for link retraining..." >&2
-  tt-smi --reset "${device}" >/dev/null
+  timeout "${smi_timeout}" tt-smi --reset "${device}" >/dev/null
   sleep "${wait_secs}"
 }
 
