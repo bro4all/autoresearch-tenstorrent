@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
+source "${ROOT_DIR}/scripts/tt_common.sh"
 
 CACHE_DIR="${AUTORESEARCH_CACHE_DIR:-$ROOT_DIR/.cache-repro}"
 RUN1_LOG="${ROOT_DIR}/run_repro_1.log"
@@ -14,9 +15,17 @@ export AUTORESEARCH_TIME_BUDGET="${AUTORESEARCH_TIME_BUDGET:-60}"
 export AUTORESEARCH_SEED="${AUTORESEARCH_SEED:-123}"
 export AUTORESEARCH_CACHE_DIR="${CACHE_DIR}"
 
+tt_set_visible_devices
+tt_host_preflight
+
 python prepare.py --smoke --synthetic
-python train.py >"${RUN1_LOG}" 2>&1
-python train.py >"${RUN2_LOG}" 2>&1
+if [[ "${AUTORESEARCH_BACKEND}" == "tt" ]]; then
+  tt_run_with_recovery python train.py >"${RUN1_LOG}" 2>&1
+  tt_run_with_recovery python train.py >"${RUN2_LOG}" 2>&1
+else
+  python train.py >"${RUN1_LOG}" 2>&1
+  python train.py >"${RUN2_LOG}" 2>&1
+fi
 
 python - <<'PY'
 from pathlib import Path

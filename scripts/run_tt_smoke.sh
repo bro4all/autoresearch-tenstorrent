@@ -10,6 +10,7 @@ export AUTORESEARCH_PROFILE="${AUTORESEARCH_PROFILE:-smoke}"
 export AUTORESEARCH_TIME_BUDGET="${AUTORESEARCH_TIME_BUDGET:-60}"
 export AUTORESEARCH_TT_RESET_BEFORE_INIT="${AUTORESEARCH_TT_RESET_BEFORE_INIT:-0}"
 tt_set_visible_devices
+tt_host_preflight
 tt_maybe_host_reset
 
 tt_run_with_recovery python train.py "$@"

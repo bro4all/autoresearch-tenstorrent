@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT_DIR}/scripts/tt_common.sh"
 
 tt_set_visible_devices
+tt_host_preflight
 tt_maybe_host_reset
 
 if [[ "${AUTORESEARCH_TT_USE_DOCKER:-0}" == "1" ]]; then

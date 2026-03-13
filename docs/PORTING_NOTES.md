@@ -51,6 +51,11 @@ This repo preserves the upstream `prepare.py` semantic contract while intentiona
    - `smoke` and `tt_singlechip` therefore freeze those embeddings by default on TT and optimize the rest of the model.
    - `upstreamish` keeps embeddings trainable by default.
 
+10. Host-side TT preflight added for N300 stability.
+   - The documented TT entrypoints now require `tt-smi -ls` to succeed on the host before they launch JAX or `torch_xla`.
+   - If board management is unhealthy, the wrappers perform a bounded host reset and re-check the board before the Python process starts.
+   - Reset ownership is intentionally kept in shell wrappers so direct `python train.py` remains simple and container probes stay probe-only.
+
 ## Why TT-XLA
 
 - TT-XLA is the documented frontend Tenstorrent recommends for PyTorch.

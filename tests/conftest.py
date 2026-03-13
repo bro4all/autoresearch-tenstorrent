@@ -25,8 +25,11 @@ def configure_test_env(monkeypatch, tmp_path: Path, backend: str = "cpu", profil
     monkeypatch.setenv("AUTORESEARCH_TIME_BUDGET", "5")
     if backend == "tt":
         monkeypatch.setenv("TT_VISIBLE_DEVICES", "0")
-        monkeypatch.setenv("AUTORESEARCH_TT_RESET_BEFORE_INIT", "1")
-        monkeypatch.setenv("AUTORESEARCH_TT_RESET_WAIT_SECS", "30")
+        monkeypatch.setenv("TT_METAL_VISIBLE_DEVICES", "0")
+        monkeypatch.setenv("AUTORESEARCH_TT_PREFLIGHT_RESET_ON_FAIL", "1")
+        monkeypatch.setenv("AUTORESEARCH_TT_PREFLIGHT_RETRIES", "1")
+        monkeypatch.setenv("AUTORESEARCH_TT_LIST_TIMEOUT_SECS", "10")
+        monkeypatch.setenv("AUTORESEARCH_TT_RESET_WAIT_SECS", "60")
     return cache_dir
 
 

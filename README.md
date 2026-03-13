@@ -120,7 +120,7 @@ TT environment check:
 TT_VISIBLE_DEVICES=0 ./scripts/check_tt_env.sh
 ```
 
-The TT shell wrappers retry once after a recoverable TT bring-up failure by default on N300 hosts. If you want an unconditional host-side reset before the run, set `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Use `AUTORESEARCH_TT_RESET_WAIT_SECS` to change the post-reset wait and `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` to bound `tt-smi` calls on wedged hosts.
+The TT shell wrappers now do a host-side board-management preflight before JAX or `torch_xla` starts. If `tt-smi -ls` is unhealthy, the wrapper performs a bounded host reset and re-checks the board before launching Python. If you want an unconditional host-side reset before the run, set `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Use `AUTORESEARCH_TT_PREFLIGHT_RETRIES`, `AUTORESEARCH_TT_LIST_TIMEOUT_SECS`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, and `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` to tune recovery on unstable N300 hosts.
 
 60-second TT smoke run:
 
@@ -229,7 +229,7 @@ If a TT run fails with unsupported ops or lazy graph issues:
 
 If a TT run fails before model code with messages like `Read unexpected run_mailbox value from core` or `Timeout waiting for Ethernet core service remote IO request flush`:
 
-- Use [`scripts/check_tt_env.sh`](/workdir/autoresearch-tenstorrent/scripts/check_tt_env.sh), [`scripts/run_tt_smoke.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_smoke.sh), or [`scripts/run_tt_baseline.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_baseline.sh). They retry once after `tt-smi --reset 0`.
+- Use [`scripts/check_tt_env.sh`](/workdir/autoresearch-tenstorrent/scripts/check_tt_env.sh), [`scripts/run_tt_smoke.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_smoke.sh), or [`scripts/run_tt_baseline.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_baseline.sh). They first require `tt-smi -ls` to succeed on the host, then retry once after a bounded host reset if the board-management preflight is unhealthy.
 - Set `AUTORESEARCH_TT_INIT_RETRIES`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, or `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` if you need a different recovery policy.
 - Set `TT_VISIBLE_DEVICES` before importing `jax` or `torch_xla`.
 - Use the TT-XLA eager debugging path from [`tt_runtime.py`](/workdir/autoresearch-tenstorrent/tt_runtime.py) only for diagnosis, not as the training baseline.
@@ -237,7 +237,7 @@ If a TT run fails before model code with messages like `Read unexpected run_mail
 If TT-XLA initialization fails:
 
 - Re-run `./scripts/check_tt_env.sh`.
-- Confirm `/dev/tenstorrent` exists and `tt-smi -ls` lists hardware.
+- Confirm `/dev/tenstorrent` exists and `tt-smi -ls` lists hardware on the host before entering Docker. Inside Docker, keep the script probe-only and let the host own reset policy.
 - On N300, set `TT_VISIBLE_DEVICES=0` before importing `jax` or `torch_xla`. Prefer `TT_VISIBLE_DEVICES` over the older `TT_METAL_VISIBLE_DEVICES`.
 - The repo launch scripts retry after a recoverable TT startup failure by default. For direct `python train.py` runs, use `AUTORESEARCH_TT_RESET_BEFORE_INIT=1` if the previous TT process died during startup.
 - Confirm the TT-XLA runtime version matches the installed firmware/device stack.

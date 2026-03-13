@@ -14,9 +14,12 @@ def _tt_smi_timeout_seconds() -> int:
 
 
 def _prime_tt_environment() -> None:
-    if "TT_VISIBLE_DEVICES" not in os.environ and "TT_METAL_VISIBLE_DEVICES" not in os.environ:
+    if "TT_VISIBLE_DEVICES" not in os.environ and "TT_METAL_VISIBLE_DEVICES" in os.environ:
+        os.environ["TT_VISIBLE_DEVICES"] = os.environ["TT_METAL_VISIBLE_DEVICES"]
+    if "TT_VISIBLE_DEVICES" not in os.environ:
         # On N300, exposing PCIe device 0 also exposes the Ethernet-connected peer.
         os.environ["TT_VISIBLE_DEVICES"] = os.environ.get("AUTORESEARCH_TT_VISIBLE_DEVICES", "0")
+    os.environ.setdefault("TT_METAL_VISIBLE_DEVICES", os.environ["TT_VISIBLE_DEVICES"])
     os.environ.setdefault("PJRT_DEVICE", "TT")
     os.environ.setdefault("XLA_STABLEHLO_COMPILE", "1")
 
@@ -30,7 +33,7 @@ def _import_torch_xla():
 
 
 def _first_visible_device() -> str:
-    visible = os.environ.get("TT_VISIBLE_DEVICES") or os.environ.get("TT_METAL_VISIBLE_DEVICES") or "0"
+    visible = os.environ.get("TT_VISIBLE_DEVICES") or "0"
     return visible.split(",")[0].strip() or "0"
 
 
@@ -40,6 +43,10 @@ def _env_flag(name: str, default: str = "0") -> bool:
 
 def _maybe_reset_before_init() -> None:
     if not _env_flag("AUTORESEARCH_TT_RESET_BEFORE_INIT"):
+        return
+    if _env_flag("AUTORESEARCH_TT_HOST_RESET_DONE"):
+        return
+    if os.path.exists("/.dockerenv"):
         return
     if not shutil.which("tt-smi"):
         return

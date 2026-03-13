@@ -9,6 +9,7 @@ export AUTORESEARCH_BACKEND="${AUTORESEARCH_BACKEND:-tt}"
 export AUTORESEARCH_PROFILE="${AUTORESEARCH_PROFILE:-tt_singlechip}"
 export AUTORESEARCH_TT_RESET_BEFORE_INIT="${AUTORESEARCH_TT_RESET_BEFORE_INIT:-0}"
 tt_set_visible_devices
+tt_host_preflight
 tt_maybe_host_reset
 
 tt_run_with_recovery python train.py "$@"

@@ -15,6 +15,8 @@ def test_tt_env():
     if not tt_hardware_available():
         pytest.skip("No Tenstorrent device detected")
     os.environ.setdefault("TT_VISIBLE_DEVICES", "0")
+    os.environ.setdefault("TT_METAL_VISIBLE_DEVICES", os.environ["TT_VISIBLE_DEVICES"])
+    os.environ.setdefault("AUTORESEARCH_TT_RESET_BEFORE_INIT", "0")
     devices_visible = False
     try:
         import jax

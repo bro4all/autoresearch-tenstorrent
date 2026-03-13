@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 
 import pytest
 import torch
@@ -52,19 +51,17 @@ def test_one_step_train(monkeypatch, tmp_path):
     loss_after = model(x, y)
     assert torch.isfinite(loss_after)
 
-
-def _run_train(tmp_path, extra_env, *args):
+def _run_script(script_name: str, extra_env):
     env = os.environ.copy()
     env.update(extra_env)
-    proc = subprocess.run(
-        [sys.executable, "train.py", *args],
+    return subprocess.run(
+        [str(REPO_ROOT / "scripts" / script_name)],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
         text=True,
         check=False,
     )
-    return proc
 
 
 @pytest.mark.tt_hw
@@ -72,7 +69,7 @@ def _run_train(tmp_path, extra_env, *args):
 def test_60s_smoke_run(monkeypatch, tmp_path):
     modules = _prepare_cache(monkeypatch, tmp_path, backend="tt", profile="smoke")
     proc = subprocess.run(
-        [sys.executable, "train.py", "--experiment", "--description", "smoke-baseline"],
+        [str(REPO_ROOT / "scripts" / "run_tt_smoke.sh"), "--experiment", "--description", "smoke-baseline"],
         cwd=REPO_ROOT,
         env={
             **os.environ,
@@ -114,18 +111,13 @@ def test_60s_smoke_run(monkeypatch, tmp_path):
 @pytest.mark.long
 def test_300s_baseline_run(monkeypatch, tmp_path):
     modules = _prepare_cache(monkeypatch, tmp_path, backend="tt", profile="tt_singlechip")
-    proc = subprocess.run(
-        [sys.executable, "train.py"],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
+    proc = _run_script(
+        "run_tt_baseline.sh",
+        {
             "AUTORESEARCH_BACKEND": "tt",
             "AUTORESEARCH_PROFILE": "tt_singlechip",
             "AUTORESEARCH_CACHE_DIR": str(tmp_path / "cache"),
         },
-        capture_output=True,
-        text=True,
-        check=False,
     )
     assert proc.returncode == 0, proc.stderr
     summary = parse_summary(proc.stdout)
@@ -147,8 +139,8 @@ def test_reproducibility(monkeypatch, tmp_path):
         "AUTORESEARCH_SEED": "777",
         "AUTORESEARCH_CACHE_DIR": str(tmp_path / "cache"),
     }
-    proc1 = subprocess.run([sys.executable, "train.py"], cwd=REPO_ROOT, env=common_env, capture_output=True, text=True)
-    proc2 = subprocess.run([sys.executable, "train.py"], cwd=REPO_ROOT, env=common_env, capture_output=True, text=True)
+    proc1 = _run_script("run_tt_smoke.sh", common_env)
+    proc2 = _run_script("run_tt_smoke.sh", common_env)
     assert proc1.returncode == 0, proc1.stderr
     assert proc2.returncode == 0, proc2.stderr
     s1 = parse_summary(proc1.stdout)

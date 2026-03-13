@@ -17,9 +17,10 @@
 - TT runtime setup depends on a matching combination of firmware, TT-XLA runtime, and host/container environment.
 - A misconfigured host/container can fail before model code runs with TT-XLA errors around hugepage pinning or NOC-address mapping. In that case, fix the TT runtime environment first.
 - On N300, use `TT_VISIBLE_DEVICES=0` before importing `jax` or `torch_xla`. The older `TT_METAL_VISIBLE_DEVICES` selector is not the preferred path.
-- After a failed bring-up, the board can need `tt-smi --reset 0` plus a short wait before the remote chip retrains and fabric initialization succeeds again.
-- The repo launch scripts retry once on these recoverable init failures by default. Tune that behavior with `AUTORESEARCH_TT_INIT_RETRIES`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, and `AUTORESEARCH_TT_SMI_TIMEOUT_SECS`.
-- The repo TT shell wrappers only do an unconditional reset preflight when `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Direct `python train.py` runs need `AUTORESEARCH_TT_RESET_BEFORE_INIT=1` if the last TT process wedged the board.
+- After a failed bring-up, the board can need `tt-smi --reset 0` plus a 30-60 second wait before the remote chip retrains and fabric initialization succeeds again.
+- The repo TT shell wrappers now do a host-side `tt-smi -ls` preflight before entering JAX or `torch_xla`. If board management is unhealthy, they retry once after a bounded host reset by default. Tune that behavior with `AUTORESEARCH_TT_PREFLIGHT_RETRIES`, `AUTORESEARCH_TT_LIST_TIMEOUT_SECS`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, and `AUTORESEARCH_TT_SMI_TIMEOUT_SECS`.
+- Direct `python train.py` remains supported for clean environments, but it is not the preferred recovery path on a flaky N300 host because it bypasses the shell preflight.
+- On the tested N300 stack, TT-XLA can emit `Logical eth core ... is not an active eth core` during init and still recover to a usable `jax.devices('tt')` / `xm.xla_device()` result. Treat the final device probe result as the ground truth.
 
 ## Profiles
 
