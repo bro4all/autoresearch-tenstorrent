@@ -9,6 +9,7 @@ This repo does **not** edit the upstream repo in place. It is a new implementati
 - Primary backend is `torch_xla` on TT via TT-XLA, not CUDA.
 - FlashAttention 3 is replaced by pure PyTorch causal attention that is compatible with CPU and TT-XLA.
 - The optimizer baseline is plain `AdamW`; CUDA-only fused optimizer code is removed.
+- The TT-friendly profiles freeze token/value embeddings by default because this TT-XLA stack currently produces non-finite embedding weights within a few optimizer steps when they are trained normally.
 - Runtime setup is centralized in [`tt_runtime.py`](/workdir/autoresearch-tenstorrent/tt_runtime.py).
 - Tunables move into [`configs.py`](/workdir/autoresearch-tenstorrent/configs.py) with named profiles and env overrides.
 - Two profiles are built in:
@@ -143,6 +144,7 @@ AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_base
 - Default.
 - Uses a smaller model and shorter sequence length so a single TT device can complete an honest baseline run.
 - Keeps the 300-second training budget, the exact `val_bpb` definition, and the same `results.tsv` workflow.
+- Freezes token and value embeddings by default on TT for runtime stability. Override with `AUTORESEARCH_FREEZE_EMBEDDINGS=0` if you want to debug embedding training on your stack.
 
 `profile=smoke`
 - Synthetic-data-friendly, short-context, small-model profile for CI and smoke tests.
@@ -163,6 +165,7 @@ Required env overrides supported by [`configs.py`](/workdir/autoresearch-tenstor
 - `AUTORESEARCH_ENABLE_SLIDING_WINDOW`
 - `AUTORESEARCH_ENABLE_TT_COMPILE`
 - `AUTORESEARCH_SEED`
+- `AUTORESEARCH_FREEZE_EMBEDDINGS`
 
 Useful extra override:
 
@@ -213,6 +216,7 @@ Current highlights:
 - Sliding-window attention is implemented but default-off.
 - Whole-model `torch.compile(backend="tt")` is experimental and default-off.
 - Peak VRAM and MFU are placeholders on TT unless a future change measures them honestly.
+- TT-friendly profiles currently freeze token/value embeddings by default for stability on the tested N300 + TT-XLA stack.
 
 ## Troubleshooting
 

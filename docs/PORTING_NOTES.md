@@ -46,6 +46,11 @@ This repo preserves the upstream `prepare.py` semantic contract while intentiona
    - `prepare.py --smoke --synthetic` creates tiny local parquet shards for offline tests.
    - This is test scaffolding only; the real baseline path still uses the upstream shard/tokenizer layout.
 
+9. TT-friendly profiles freeze token/value embeddings by default.
+   - On the tested N300 + TT-XLA stack, training `transformer.wte` and per-layer `value_embeds` with plain AdamW caused non-finite TT weights within a few steps even though CPU-vs-TT forward correctness passed.
+   - `smoke` and `tt_singlechip` therefore freeze those embeddings by default on TT and optimize the rest of the model.
+   - `upstreamish` keeps embeddings trainable by default.
+
 ## Why TT-XLA
 
 - TT-XLA is the documented frontend Tenstorrent recommends for PyTorch.

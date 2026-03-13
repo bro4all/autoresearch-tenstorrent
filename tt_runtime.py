@@ -120,11 +120,7 @@ def sync(backend: Optional[str] = None) -> None:
 
 
 def optimizer_step(optimizer, backend: Optional[str] = None) -> None:
-    if get_backend(backend) != "tt":
-        optimizer.step()
-        return
-    _, xm, _ = _import_torch_xla()
-    xm.optimizer_step(optimizer, barrier=False)
+    optimizer.step()
 
 
 def get_device_string(device=None) -> str:

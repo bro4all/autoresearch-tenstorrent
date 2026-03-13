@@ -24,8 +24,9 @@
 ## Profiles
 
 - `upstreamish` is for semantic comparison and is not the default one-device TT profile.
-- `tt_singlechip` is the default TT baseline.
-- `smoke` uses small synthetic/offline-friendly inputs for tests.
+- `tt_singlechip` is the default TT baseline and freezes token/value embeddings by default.
+- `smoke` uses small synthetic/offline-friendly inputs for tests and also freezes token/value embeddings by default.
+- Set `AUTORESEARCH_FREEZE_EMBEDDINGS=0` only if you are intentionally debugging embedding training on your TT-XLA stack.
 
 ## Known Working Intent
 

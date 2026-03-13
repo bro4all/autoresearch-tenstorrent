@@ -280,6 +280,14 @@ def maybe_compile_model(model: nn.Module, cfg: TrainConfig, backend: str) -> nn.
     return torch.compile(model, backend="tt")
 
 
+def maybe_freeze_tt_embeddings(model: GPT, cfg: TrainConfig, backend: str) -> None:
+    if backend != "tt" or not cfg.freeze_embeddings:
+        return
+    model.transformer["wte"].weight.requires_grad_(False)
+    for embedding in model.value_embeds.values():
+        embedding.weight.requires_grad_(False)
+
+
 def ensure_data_ready(cfg: TrainConfig) -> None:
     if (cfg.tokenizer_dir / "tokenizer.pkl").exists() and (cfg.data_dir / "shard_06542.parquet").exists():
         return
@@ -344,8 +352,9 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
     model.init_weights()
     model_dtype = torch.bfloat16 if (backend == "tt" and cfg.bf16) else torch.float32
     model = model.to(device=device, dtype=model_dtype)
+    maybe_freeze_tt_embeddings(model, cfg, backend)
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        [param for param in model.parameters() if param.requires_grad],
         lr=cfg.learning_rate,
         betas=(cfg.adam_beta1, cfg.adam_beta2),
         weight_decay=cfg.weight_decay,

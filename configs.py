@@ -39,6 +39,7 @@ class TrainConfig:
     smoke_data: bool
     synthetic_data: bool
     bf16: bool
+    freeze_embeddings: bool
     experimental_compile_options: Dict[str, Any]
 
     @property
@@ -90,6 +91,7 @@ UPSTREAMISH = TrainConfig(
     smoke_data=False,
     synthetic_data=False,
     bf16=True,
+    freeze_embeddings=False,
     experimental_compile_options={"optimization_level": 1},
 )
 
@@ -120,6 +122,7 @@ TT_SINGLECHIP = TrainConfig(
     smoke_data=False,
     synthetic_data=False,
     bf16=True,
+    freeze_embeddings=True,
     experimental_compile_options={"optimization_level": 1},
 )
 
@@ -150,6 +153,7 @@ SMOKE = TrainConfig(
     smoke_data=True,
     synthetic_data=True,
     bf16=False,
+    freeze_embeddings=True,
     experimental_compile_options={"optimization_level": 0},
 )
 
@@ -208,6 +212,7 @@ def load_config() -> TrainConfig:
         "weight_decay": _env_override("AUTORESEARCH_WEIGHT_DECAY", cfg.weight_decay),
         "warmup_steps": _env_override("AUTORESEARCH_WARMUP_STEPS", cfg.warmup_steps),
         "bf16": _env_override("AUTORESEARCH_BF16", cfg.bf16),
+        "freeze_embeddings": _env_override("AUTORESEARCH_FREEZE_EMBEDDINGS", cfg.freeze_embeddings),
     }
     return replace(cfg, **overrides)
 
