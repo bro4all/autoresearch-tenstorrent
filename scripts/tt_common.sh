@@ -15,7 +15,7 @@ tt_reset_device_id() {
 
 tt_reset_and_wait() {
   if ! command -v tt-smi >/dev/null 2>&1; then
-    echo "tt-smi is not available; cannot reset TT device after init failure." >&2
+    echo "tt-smi is not available in this environment; skipping TT device reset." >&2
     return 1
   fi
   local device wait_secs smi_timeout
@@ -63,6 +63,9 @@ tt_run_with_recovery() {
     rm -f "${log_file}"
     attempt=$((attempt + 1))
     echo "TT init failed with a recoverable dispatch/fabric error; retry ${attempt}/${max_retries} after reset." >&2
-    tt_reset_and_wait
+    if ! tt_reset_and_wait; then
+      echo "Unable to reset TT device here; returning the original TT init failure." >&2
+      return "${status}"
+    fi
   done
 }
