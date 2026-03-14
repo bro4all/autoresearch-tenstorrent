@@ -147,7 +147,8 @@ AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_base
 - Freezes token and value embeddings by default on TT for runtime stability. Override with `AUTORESEARCH_FREEZE_EMBEDDINGS=0` if you want to debug embedding training on your stack.
 
 `profile=smoke`
-- Synthetic-data-friendly, short-context, small-model profile for CI and smoke tests.
+- Synthetic-data-friendly, extra-small TT profile for CI and smoke tests.
+- Defaults to a 64-token context and a 1-layer/64-channel model so the 60-second TT smoke run fits inside the intended wall-clock gate on the tested N300 stack.
 
 ## Environment Overrides
 
