@@ -12,13 +12,11 @@ Use upstream as a source of ideas, bug fixes, and protocol changes. Port them in
 
 ## Repo Workflow
 
-Start every upstream review with:
+Start every manual upstream review with:
 
 ```bash
 ./scripts/check_upstream_sync.sh
 ```
-
-The repo also includes a thin scheduled/manual GitHub Actions report at [`.github/workflows/upstream-sync.yml`](/workdir/autoresearch-tenstorrent/.github/workflows/upstream-sync.yml). Use it to surface upstream drift automatically, but keep actual sync decisions manual.
 
 That script:
 

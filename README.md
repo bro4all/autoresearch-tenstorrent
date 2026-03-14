@@ -1,55 +1,42 @@
 # autoresearch-tenstorrent
 
-`autoresearch-tenstorrent` is a fresh repo that ports [`karpathy/autoresearch`](https://github.com/karpathy/autoresearch) to a single Tenstorrent device. The baseline keeps the upstream research loop contract intact where it matters: fixed wall-clock training budget, `val_bpb` as the optimization target, `results.tsv` logging, and a repo shape that remains usable by an autonomous coding loop later.
+This is the Tenstorrent single-device port of [`karpathy/autoresearch`](https://github.com/karpathy/autoresearch).
 
-This repo does **not** edit the upstream repo in place. It is a new implementation tuned for TT-XLA lazy execution on Tenstorrent hardware.
+The idea is the same as upstream: give an AI agent a small but real LLM training setup and let it experiment autonomously on a fixed wall-clock budget. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. The TT port keeps that research loop contract intact while replacing the CUDA/H100 assumptions with a correctness-first TT-XLA baseline that runs on one Tenstorrent device.
 
-## What Differs From Upstream
+This repo is not an in-place edit of upstream. It is a fresh TT-focused implementation that stays close to upstream semantics where it matters: fixed training budget, `val_bpb` as the optimization target, `results.tsv` logging, and a minimal repo shape that a future autonomous coding loop can still use.
 
-- Primary backend is `torch_xla` on TT via TT-XLA, not CUDA.
-- FlashAttention 3 is replaced by pure PyTorch causal attention that is compatible with CPU and TT-XLA.
-- The optimizer baseline is plain `AdamW`; CUDA-only fused optimizer code is removed.
-- The TT-friendly profiles freeze token/value embeddings by default because this TT-XLA stack currently produces non-finite embedding weights within a few optimizer steps when they are trained normally.
-- Runtime setup is centralized in [`tt_runtime.py`](/workdir/autoresearch-tenstorrent/tt_runtime.py).
-- Tunables move into [`configs.py`](/workdir/autoresearch-tenstorrent/configs.py) with named profiles and env overrides.
-- Two profiles are built in:
-  - `upstreamish`: close to the original defaults and semantics.
-  - `tt_singlechip`: default, smaller and TT-friendly so one device can complete a real baseline run.
-- Sliding-window attention and whole-model `torch.compile(backend="tt")` are optional and default-off.
-- TT-only unavailable metrics such as peak VRAM and MFU print `-1.0` instead of fake values.
+## How it works
 
-Full deviation log: [`docs/PORTING_NOTES.md`](/workdir/autoresearch-tenstorrent/docs/PORTING_NOTES.md)
+The repo is still deliberately small. The files that matter most are:
 
-## Supported Hardware Path
+- **`prepare.py`**: fixed constants, one-time data prep, tokenizer, dataloader, evaluation. Keep this frozen during research runs.
+- **`train.py`**: the single file the agent edits during autonomous experimentation. Model, optimizer, training loop, architecture, and research ideas live here.
+- **`program.md`**: the baseline agent protocol for TT runs.
 
-- Primary target: Ubuntu 22.04
-- Primary runtime target: Python 3.12 with the TT-XLA wheel path
-- Primary hardware target: one Tenstorrent device exposed through `/dev/tenstorrent`
-- Baseline backend: TT-XLA lazy execution via `torch_xla`
+The TT port adds a few support files around that core:
 
-## Install: TT-XLA Wheel Path
+- **`configs.py`**: named profiles and environment overrides
+- **`tt_runtime.py`**: runtime/device glue so the code never branches on CUDA directly
+- **`scripts/run_tt_smoke.sh` / `scripts/run_tt_baseline.sh`**: the preferred TT entrypoints with host-side preflight and recovery
 
-These steps follow the public TT-XLA getting-started flow for wheel installs and then add this repo on top.
+By design, training runs for a **fixed 5-minute time budget** excluding early compile/warmup steps when practical. The metric is still **`val_bpb`** (validation bits per byte) and its meaning is unchanged from upstream.
+
+## Quick start
+
+**Requirements:** one Tenstorrent device, Ubuntu 22.04-class host, Python 3.12, and a documented TT-XLA runtime path. The documented default path for this repo is `pip` and shell scripts, not `uv`.
+
+Wheel path:
 
 ```bash
 cd autoresearch-tenstorrent
 ./scripts/bootstrap_tt.sh
 source .venv-tt/bin/activate
+python prepare.py
+AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_baseline.sh
 ```
 
-What `bootstrap_tt.sh` does:
-
-```bash
-python3.12 -m venv .venv-tt
-source .venv-tt/bin/activate
-pip install --upgrade pip setuptools wheel
-pip install pjrt-plugin-tt --extra-index-url https://pypi.eng.aws.tenstorrent.com/
-pip install -e .
-```
-
-## Install: TT-XLA Docker Path
-
-The official TT-XLA docs also publish a Docker path. Start the container:
+Docker path:
 
 ```bash
 export TT_VISIBLE_DEVICES=0
@@ -69,17 +56,71 @@ Inside the container:
 ```bash
 pip install -e .
 ./scripts/check_tt_env.sh
+python prepare.py
+AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_baseline.sh
 ```
 
-## Required Environment Checks
+If the above commands work, the TT path is live and you can move into autonomous research mode.
 
-This repo supports the two validation commands requested in the project brief. The shell wrapper runs them as two separate processes:
+## Running the agent
+
+Point your coding agent at [`program.md`](/workdir/autoresearch-tenstorrent/program.md). A minimal prompt is still:
+
+```text
+Hi, have a look at program.md and let's kick off a new experiment. Let's do the setup first.
+```
+
+The protocol remains intentionally lightweight. The main difference from upstream is that the baseline training path is TT-XLA on one Tenstorrent device, and `train.py` is still the intended mutation target during experimentation.
+
+## Project structure
+
+```text
+prepare.py       — constants, data prep + runtime utilities (do not modify in research loop)
+train.py         — model, optimizer, training loop (agent modifies this)
+program.md       — agent instructions
+configs.py       — profiles and env overrides
+tt_runtime.py    — TT/CPU runtime helpers
+pyproject.toml   — Python dependencies
+```
+
+## Design choices
+
+- **Single file to modify.** Autonomous experiments should mutate only `train.py`.
+- **Fixed time budget.** Training is compared on the same wall-clock budget, not the same step count.
+- **TT-XLA first.** The primary backend is idiomatic lazy `torch_xla` on TT, not `tt-torch`, not TT-Forge-FE as the main path, and not whole-model `torch.compile(backend="tt")`.
+- **Correctness-first baseline.** FlashAttention, CUDA-only fused optimizer paths, CUDA memory metrics, and H100-specific MFU logic are removed or replaced.
+- **Minimal support layer.** The port adds `configs.py`, `tt_runtime.py`, tests, and shell wrappers so the rest of the code stays backend-agnostic.
+
+## What differs from upstream
+
+- Primary backend is TT-XLA on Tenstorrent, not CUDA on NVIDIA.
+- Baseline attention is pure PyTorch causal attention compatible with CPU and TT-XLA.
+- Baseline optimizer is standard `AdamW`.
+- `profile=tt_singlechip` is the default profile and is much smaller than the H100-oriented upstream defaults.
+- Sliding-window attention and whole-model compile stay behind flags and are default-off.
+- TT-only unavailable metrics such as `peak_vram_mb` and `mfu_percent` print `-1.0`.
+- TT-friendly profiles currently freeze token/value embeddings by default because the tested N300 + TT-XLA stack still becomes non-finite on the real baseline geometry when those embeddings are trained normally.
+
+Full deviation log: [`docs/PORTING_NOTES.md`](/workdir/autoresearch-tenstorrent/docs/PORTING_NOTES.md)
+
+## Platform support
+
+Upstream targets a single NVIDIA GPU. This fork targets a single Tenstorrent device through TT-XLA.
+
+Supported baseline path:
+
+- one Wormhole-class device
+- Ubuntu 22.04-class host
+- Python 3.12
+- TT-XLA wheel install or `ghcr.io/tenstorrent/tt-xla-slim:latest`
+
+Recommended runtime validation:
 
 ```bash
 ./scripts/check_tt_env.sh
 ```
 
-Equivalent direct commands:
+Equivalent direct probes:
 
 ```bash
 export TT_VISIBLE_DEVICES=0
@@ -87,28 +128,30 @@ python -c "import jax; print(jax.devices('tt'))"
 python - <<'PY'
 import torch_xla.runtime as xr
 import torch_xla.core.xla_model as xm
-xr.set_device_type('TT')
+xr.set_device_type("TT")
 print(xm.xla_device())
 PY
 ```
 
-## Data Preparation
+Like upstream, this code is intentionally not trying to be every platform at once. The baseline path here is one TT device. CPU exists for smoke tests and debugging only.
 
-Full upstream-compatible data/tokenizer prep:
+## Preparing data
+
+Full upstream-compatible data and tokenizer prep:
 
 ```bash
 python prepare.py
 ```
 
-Fast synthetic smoke cache for tests:
+Tiny offline smoke cache:
 
 ```bash
 AUTORESEARCH_PROFILE=smoke AUTORESEARCH_BACKEND=cpu python prepare.py --smoke --synthetic
 ```
 
-## Run Commands
+## Common commands
 
-CPU smoke test:
+CPU smoke:
 
 ```bash
 ./scripts/run_cpu_smoke.sh
@@ -120,25 +163,23 @@ TT environment check:
 TT_VISIBLE_DEVICES=0 ./scripts/check_tt_env.sh
 ```
 
-The TT shell wrappers now do a host-side board-management preflight before JAX or `torch_xla` starts. If `tt-smi -ls` is unhealthy, the wrapper performs a bounded host reset and waits until board management actually recovers before launching Python. If you want an unconditional host-side reset before the run, set `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Use `AUTORESEARCH_TT_PREFLIGHT_RETRIES`, `AUTORESEARCH_TT_LIST_TIMEOUT_SECS`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, `AUTORESEARCH_TT_RESET_POLL_SECS`, and `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` to tune recovery on unstable N300 hosts.
-
-60-second TT smoke run:
+60-second TT smoke:
 
 ```bash
 AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=smoke AUTORESEARCH_TIME_BUDGET=60 ./scripts/run_tt_smoke.sh
 ```
 
-300-second TT baseline run:
+300-second TT baseline:
 
 ```bash
 AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_baseline.sh
 ```
 
-## Measured Baselines
+## Measured baselines
 
-Measured on the connected N300 using the official `ghcr.io/tenstorrent/tt-xla-slim:latest` image.
+Measured on the connected N300 using `ghcr.io/tenstorrent/tt-xla-slim:latest`.
 
-60-second `smoke` profile reference:
+60-second `smoke` reference:
 
 ```text
 backend: tt
@@ -156,7 +197,7 @@ depth: 1
 tokens_per_sec_avg: 583.926726
 ```
 
-300-second `tt_singlechip` baseline reference:
+300-second `tt_singlechip` reference:
 
 ```text
 backend: tt
@@ -174,28 +215,25 @@ depth: 2
 tokens_per_sec_avg: 2345.206275
 ```
 
-These are the current TT reference points for the repo. On the same device and profile, future changes should not reduce `tokens_per_sec_avg` by more than 20% unless they improve `val_bpb` materially.
+On the same device and profile, future changes should not reduce `tokens_per_sec_avg` by more than 20% unless they improve `val_bpb` materially.
 
 ## Profiles
 
 `profile=upstreamish`
-- Preserves the original 2048-token context, 5-minute budget, large evaluation budget, and upstream-scale batch geometry as closely as practical.
-- This is mainly for semantic comparison, not the default one-device TT path.
+- Keeps the upstream-scale semantics as closely as practical.
+- Mainly for semantic comparison, not for the default TT path.
 
 `profile=tt_singlechip`
 - Default.
-- Uses a smaller model and shorter sequence length so a single TT device can complete an honest baseline run.
-- Keeps the 300-second training budget, the exact `val_bpb` definition, and the same `results.tsv` workflow.
-- Current verified default geometry on the tested N300 stack: `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=8`, `eval_tokens=262144`, `bf16=0`.
-- Freezes token and value embeddings by default on TT for runtime stability. Override with `AUTORESEARCH_FREEZE_EMBEDDINGS=0` if you want to debug embedding training on your stack.
+- Current verified N300-safe geometry: `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=8`, `eval_tokens=262144`, `bf16=0`.
+- Keeps the 300-second budget and the same `val_bpb` definition.
 
 `profile=smoke`
-- Synthetic-data-friendly, extra-small TT profile for CI and smoke tests.
-- Defaults to a 64-token context and a 1-layer/64-channel model so the 60-second TT smoke run fits inside the intended wall-clock gate on the tested N300 stack.
+- Extra-small synthetic-friendly path for tests and quick TT validation.
 
-## Environment Overrides
+## Environment overrides
 
-Required env overrides supported by [`configs.py`](/workdir/autoresearch-tenstorrent/configs.py):
+Supported env overrides include:
 
 - `AUTORESEARCH_BACKEND`
 - `AUTORESEARCH_PROFILE`
@@ -211,117 +249,54 @@ Required env overrides supported by [`configs.py`](/workdir/autoresearch-tenstor
 - `AUTORESEARCH_SEED`
 - `AUTORESEARCH_BF16`
 - `AUTORESEARCH_FREEZE_EMBEDDINGS`
-
-Useful extra override:
-
 - `AUTORESEARCH_CACHE_DIR`
 
-## Training-Time Accounting
+## Research loop
 
-`training_seconds` is the budgeted time used for experiment comparison. This repo excludes the first few warmup steps from `training_seconds` so compilation and graph warmup do not consume the 60-second or 300-second research budget. `total_seconds` includes everything.
-
-## Output Contract
-
-The final summary prints these keys exactly:
-
-- `backend:`
-- `tt_device:`
-- `init_val_bpb:`
-- `val_bpb:`
-- `training_seconds:`
-- `total_seconds:`
-- `peak_vram_mb:`
-- `mfu_percent:`
-- `total_tokens_M:`
-- `num_steps:`
-- `num_params_M:`
-- `depth:`
-- `tokens_per_sec_avg:`
-
-The repo prints `-1.0` for TT metrics that are not measured honestly.
-
-## Research Loop
-
-- `train.py` is the intended mutation target during autonomous experiments.
-- `prepare.py`, `configs.py`, `tt_runtime.py`, scripts, and tests stay frozen during the experiment loop.
-- `results.tsv` is tab-separated and initialized with:
+The research loop is still centered on `results.tsv`:
 
 ```text
 commit	val_bpb	memory_gb	status	description
 ```
 
-- Treat the checked-in `results.tsv` as a template/header file. Record local experiment results there while you work, but do not commit the evolving run log back to git as part of normal experiment iteration.
+Treat the checked-in `results.tsv` as a header/template file. Log local runs there while working, but do not commit evolving experiment history back to git.
 
-See [`program.md`](/workdir/autoresearch-tenstorrent/program.md) for the Tenstorrent-specific protocol.
+See [`program.md`](/workdir/autoresearch-tenstorrent/program.md) for the TT-specific protocol.
 
-## Known Limitations
+## Manual upstream sync
 
-See [`docs/KNOWN_LIMITATIONS.md`](/workdir/autoresearch-tenstorrent/docs/KNOWN_LIMITATIONS.md).
-
-Current highlights:
-
-- Sliding-window attention is implemented but default-off.
-- Whole-model `torch.compile(backend="tt")` is experimental and default-off.
-- Peak VRAM and MFU are placeholders on TT unless a future change measures them honestly.
-- TT-friendly profiles currently freeze token/value embeddings by default for stability on the tested N300 + TT-XLA stack.
-
-## Troubleshooting
-
-If a TT run fails with unsupported ops or lazy graph issues:
-
-- Re-run the smallest repro in [`debug/repro_attention.py`](/workdir/autoresearch-tenstorrent/debug/repro_attention.py).
-- Force CPU with `AUTORESEARCH_BACKEND=cpu` to separate correctness bugs from lowering bugs.
-- Keep `AUTORESEARCH_ENABLE_SLIDING_WINDOW=0`.
-- Keep `AUTORESEARCH_ENABLE_TT_COMPILE=0`.
-- If you hit a TT compiler assert on `tt_singlechip`, start by reducing `AUTORESEARCH_MAX_SEQ_LEN` or `AUTORESEARCH_DEPTH` before changing the model math.
-
-If a TT run fails before model code with messages like `Read unexpected run_mailbox value from core` or `Timeout waiting for Ethernet core service remote IO request flush`:
-
-- Use [`scripts/check_tt_env.sh`](/workdir/autoresearch-tenstorrent/scripts/check_tt_env.sh), [`scripts/run_tt_smoke.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_smoke.sh), or [`scripts/run_tt_baseline.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_baseline.sh). They first require `tt-smi -ls` to succeed on the host, then retry once after a bounded host reset if the board-management preflight is unhealthy.
-- Set `AUTORESEARCH_TT_INIT_RETRIES`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, or `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` if you need a different recovery policy.
-- Set `TT_VISIBLE_DEVICES` before importing `jax` or `torch_xla`.
-- Use the TT-XLA eager debugging path from [`tt_runtime.py`](/workdir/autoresearch-tenstorrent/tt_runtime.py) only for diagnosis, not as the training baseline.
-
-If TT-XLA initialization fails:
-
-- Re-run `./scripts/check_tt_env.sh`.
-- Confirm `/dev/tenstorrent` exists and `tt-smi -ls` lists hardware on the host before entering Docker. Inside Docker, keep the script probe-only and let the host own reset policy.
-- On N300, set `TT_VISIBLE_DEVICES=0` before importing `jax` or `torch_xla`. Prefer `TT_VISIBLE_DEVICES` over the older `TT_METAL_VISIBLE_DEVICES`.
-- The repo launch scripts retry after a recoverable TT startup failure by default. For direct `python train.py` runs, use `AUTORESEARCH_TT_RESET_BEFORE_INIT=1` if the previous TT process died during startup.
-- Confirm the TT-XLA runtime version matches the installed firmware/device stack.
-- If the runtime fails during startup with hugepage pinning or NOC-address warnings, fix the host/container hugepage setup before debugging model code. Those failures happen before this repo's training code is involved.
-- If startup logs include `Read unexpected run_mailbox value` or `Fabric Router Sync: Timeout`, reset the board, wait for the links to retrain, and retry:
-
-```bash
-tt-smi --reset 0
-sleep 30
-TT_VISIBLE_DEVICES=0 ./scripts/check_tt_env.sh
-```
-
-## License
-
-MIT. Upstream-derived logic from `karpathy/autoresearch` is retained under the same license terms.
-
-## Upstream Sync Status
-
-This fork has been checked against upstream `karpathy/autoresearch` through `upstream/master` commit `c2450ad`.
-
-Relevant upstream post-fork fixes were reviewed:
-
-- the `prepare.py --download-workers` fix is already present in this port
-- the explicit non-finite loss fast-fail is already present in this port
-- the research-loop note that `results.tsv` should not be committed has been carried over into the local documentation workflow
-
-## Keeping In Sync
-
-Use the repo sync helper before pulling in upstream changes:
+Keep this repo in sync with upstream by hand:
 
 ```bash
 ./scripts/check_upstream_sync.sh
 ```
 
-This repo does not share a normal merge history with upstream, so do not use `git merge upstream/master` as the default sync path. Review the upstream commits, selectively port the useful changes into the TT codebase, and then run the TT validation commands the helper prints.
+This repo does not share a normal merge history with upstream, so the sync policy is:
 
-There is also a thin GitHub Actions report at [`.github/workflows/upstream-sync.yml`](/workdir/autoresearch-tenstorrent/.github/workflows/upstream-sync.yml). It runs on a weekly schedule or manual dispatch, captures the current upstream delta, and uploads the report as an artifact. It does not auto-merge upstream.
+1. fetch `upstream/master`
+2. review the upstream commits and key-file diffs
+3. selectively port backend-agnostic fixes and docs/process changes
+4. re-run TT validation before pushing
 
-Full workflow: [`docs/UPSTREAM_SYNC.md`](/workdir/autoresearch-tenstorrent/docs/UPSTREAM_SYNC.md)
+Detailed process: [`docs/UPSTREAM_SYNC.md`](/workdir/autoresearch-tenstorrent/docs/UPSTREAM_SYNC.md)
+
+## Troubleshooting
+
+If a TT run fails with unsupported ops or lazy-graph issues:
+
+- re-run the smallest repro in [`debug/repro_attention.py`](/workdir/autoresearch-tenstorrent/debug/repro_attention.py)
+- force CPU with `AUTORESEARCH_BACKEND=cpu`
+- keep `AUTORESEARCH_ENABLE_SLIDING_WINDOW=0`
+- keep `AUTORESEARCH_ENABLE_TT_COMPILE=0`
+
+If a TT run fails before model code with dispatch/fabric errors:
+
+- use [`scripts/check_tt_env.sh`](/workdir/autoresearch-tenstorrent/scripts/check_tt_env.sh), [`scripts/run_tt_smoke.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_smoke.sh), or [`scripts/run_tt_baseline.sh`](/workdir/autoresearch-tenstorrent/scripts/run_tt_baseline.sh)
+- set `TT_VISIBLE_DEVICES=0` before importing `jax` or `torch_xla`
+- let the shell wrappers own host-side reset/preflight on flaky N300 hosts
+
+Known limitations: [`docs/KNOWN_LIMITATIONS.md`](/workdir/autoresearch-tenstorrent/docs/KNOWN_LIMITATIONS.md)
+
+## License
+
+MIT. Upstream-derived logic from `karpathy/autoresearch` is retained under the same license terms.
