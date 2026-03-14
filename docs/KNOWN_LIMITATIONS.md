@@ -36,7 +36,7 @@
 
 - CPU smoke path: supported by the test suite in this repo.
 - TT single-device baseline intent: one TT device with TT-XLA runtime installed and `AUTORESEARCH_PROFILE=tt_singlechip`.
-- Measured on the connected N300, the verified 300-second `tt_singlechip` baseline reached `val_bpb` `3.274981 -> 2.486103` in `302.168453` training seconds with `141` steps and `7645.219007` average tokens/sec.
+- Measured on the connected N300, the verified 300-second `tt_singlechip` baseline reached `val_bpb` `3.274981 -> 2.421392` in `300.986748` training seconds with `175` steps and `9526.000778` average tokens/sec.
 - Recommended device family for first validation: Wormhole-class single-device targeting.
 
 ## Debugging Guidance

@@ -199,16 +199,16 @@ Measured on the connected N300 using `ghcr.io/tenstorrent/tt-xla-slim:latest`.
 backend: tt
 tt_device: xla:0
 init_val_bpb: 1.822148
-val_bpb: 1.449490
-training_seconds: 60.062330
-total_seconds: 175.809362
+val_bpb: 1.433131
+training_seconds: 60.067284
+total_seconds: 160.884184
 peak_vram_mb: -1.000000
 mfu_percent: -1.000000
-total_tokens_M: 0.035072
-num_steps: 137
+total_tokens_M: 0.036608
+num_steps: 143
 num_params_M: 0.123874
 depth: 1
-tokens_per_sec_avg: 583.926726
+tokens_per_sec_avg: 609.449898
 ```
 
 300-second `tt_singlechip` reference:
@@ -217,16 +217,16 @@ tokens_per_sec_avg: 583.926726
 backend: tt
 tt_device: xla:0
 init_val_bpb: 3.274981
-val_bpb: 2.486103
-training_seconds: 302.168453
-total_seconds: 461.749169
+val_bpb: 2.421392
+training_seconds: 300.986748
+total_seconds: 446.012818
 peak_vram_mb: -1.000000
 mfu_percent: -1.000000
-total_tokens_M: 2.310144
-num_steps: 141
+total_tokens_M: 2.867200
+num_steps: 175
 num_params_M: 3.539012
 depth: 2
-tokens_per_sec_avg: 7645.219007
+tokens_per_sec_avg: 9526.000778
 ```
 
 On the same device and profile, future changes should not reduce `tokens_per_sec_avg` by more than 20% unless they improve `val_bpb` materially.

@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import math
-import os
 import subprocess
 import time
 from dataclasses import asdict, dataclass
@@ -27,7 +26,8 @@ from prepare import (
     TIME_BUDGET,
     EVAL_TOKENS,
     Tokenizer,
-    evaluate_bpb,
+    evaluate_bpb as evaluate_bpb_reference,
+    get_token_bytes,
     make_dataloader,
     prepare_synthetic_cache,
 )
@@ -43,7 +43,9 @@ from tt_runtime import (
 
 DEFAULT_MLP_EXPANSION = 4
 LOGIT_SOFTCAP = 15.0
+TT_EVAL_ACCUM_STEPS = 4
 _ATTENTION_MASK_CACHE: Dict[Tuple[str, int, int], torch.Tensor] = {}
+_TOKEN_BYTES_CACHE: Dict[str, torch.Tensor] = {}
 
 
 @dataclass
@@ -298,6 +300,70 @@ def maybe_freeze_tt_embeddings(model: GPT, cfg: TrainConfig, backend: str) -> No
         embedding.weight.requires_grad_(False)
 
 
+def _cached_token_bytes(device) -> torch.Tensor:
+    key = str(device)
+    cached = _TOKEN_BYTES_CACHE.get(key)
+    if cached is not None:
+        return cached
+    token_bytes = get_token_bytes(device=device)
+    _TOKEN_BYTES_CACHE[key] = token_bytes
+    return token_bytes
+
+
+@torch.no_grad()
+def evaluate_bpb_tt_friendly(
+    model: nn.Module,
+    tokenizer: Tokenizer,
+    batch_size: int,
+    backend: str,
+    device=None,
+    max_seq_len: Optional[int] = None,
+    eval_tokens: Optional[int] = None,
+) -> float:
+    if backend != "tt":
+        return evaluate_bpb_reference(
+            model,
+            tokenizer,
+            batch_size,
+            device=device,
+            max_seq_len=max_seq_len,
+            eval_tokens=eval_tokens,
+        )
+    if device is None:
+        try:
+            device = next(model.parameters()).device
+        except StopIteration:
+            device = torch.device("cpu")
+    seq_len = max_seq_len or MAX_SEQ_LEN
+    num_eval_tokens = eval_tokens or EVAL_TOKENS
+    token_bytes = _cached_token_bytes(device)
+    val_loader = make_dataloader(tokenizer, batch_size, seq_len, "val", device=device)
+    steps = max(1, num_eval_tokens // (batch_size * seq_len))
+    total_nats_value = 0.0
+    total_bytes_value = 0
+    chunk_nats = torch.zeros((), device=device, dtype=torch.float32)
+    chunk_bytes = torch.zeros((), device=device, dtype=token_bytes.dtype)
+    was_training = model.training
+    model.eval()
+    for step_idx in range(steps):
+        x, y, _ = next(val_loader)
+        loss = model(x, y, reduction="none").reshape(-1)
+        y_flat = y.reshape(-1)
+        nbytes = token_bytes.index_select(0, y_flat)
+        mask = nbytes > 0
+        chunk_nats = chunk_nats + (loss * mask).sum()
+        chunk_bytes = chunk_bytes + nbytes.sum()
+        if (step_idx + 1) % TT_EVAL_ACCUM_STEPS == 0 or step_idx + 1 == steps:
+            sync(backend)
+            total_nats_value += float(chunk_nats.item())
+            total_bytes_value += int(chunk_bytes.item())
+            chunk_nats = torch.zeros((), device=device, dtype=torch.float32)
+            chunk_bytes = torch.zeros((), device=device, dtype=token_bytes.dtype)
+    if was_training:
+        model.train()
+    return total_nats_value / (math.log(2.0) * max(total_bytes_value, 1))
+
+
 def ensure_data_ready(cfg: TrainConfig) -> None:
     if (cfg.tokenizer_dir / "tokenizer.pkl").exists() and (cfg.data_dir / "shard_06542.parquet").exists():
         return
@@ -379,10 +445,11 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
         device=device,
         tokenizer_batch_size=cfg.tokenizer_batch_size,
     )
-    init_val_bpb = evaluate_bpb(
+    init_val_bpb = evaluate_bpb_tt_friendly(
         model,
         tokenizer,
         cfg.eval_batch_size,
+        backend,
         device=device,
         max_seq_len=cfg.max_seq_len,
         eval_tokens=cfg.eval_tokens,
@@ -402,8 +469,6 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
         for _ in range(cfg.grad_accum_steps):
             x, y, epoch = next(train_loader)
             loss = model(x, y)
-            if not torch.isfinite(loss):
-                raise RuntimeError(f"Non-finite training loss at step {step}: {loss.item()}")
             train_loss = loss.detach()
             (loss / cfg.grad_accum_steps).backward()
         optimizer_step(optimizer, backend)
@@ -416,7 +481,7 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
         tokens_processed += cfg.total_batch_size
 
         train_loss_value = float(train_loss.item()) if train_loss is not None else float("nan")
-        if math.isnan(train_loss_value) or train_loss_value > 100.0:
+        if not math.isfinite(train_loss_value) or train_loss_value > 100.0:
             raise RuntimeError(f"Exploding training loss at step {step}: {train_loss_value}")
         smooth_train_loss = 0.9 * smooth_train_loss + 0.1 * train_loss_value
         debiased = smooth_train_loss / (1 - 0.9**step)
@@ -434,10 +499,11 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
             break
     print()
 
-    val_bpb = evaluate_bpb(
+    val_bpb = evaluate_bpb_tt_friendly(
         model,
         tokenizer,
         cfg.eval_batch_size,
+        backend,
         device=device,
         max_seq_len=cfg.max_seq_len,
         eval_tokens=cfg.eval_tokens,
