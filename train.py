@@ -15,7 +15,7 @@ import subprocess
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -43,6 +43,7 @@ from tt_runtime import (
 
 DEFAULT_MLP_EXPANSION = 4
 LOGIT_SOFTCAP = 15.0
+_ATTENTION_MASK_CACHE: Dict[Tuple[str, int, int], torch.Tensor] = {}
 
 
 @dataclass
@@ -74,21 +75,30 @@ def apply_rotary_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> t
     return torch.cat([y1, y2], dim=-1)
 
 
+def get_attention_mask(seq_len: int, window_size: Optional[int], device: torch.device) -> torch.Tensor:
+    key = (str(device), seq_len, -1 if window_size is None else int(window_size))
+    cached = _ATTENTION_MASK_CACHE.get(key)
+    if cached is not None:
+        return cached
+    causal_mask = torch.triu(
+        torch.ones(seq_len, seq_len, device=device, dtype=torch.bool),
+        diagonal=1,
+    )
+    if window_size is not None and window_size > 0 and window_size < seq_len:
+        positions = torch.arange(seq_len, device=device)
+        distance = positions[:, None] - positions[None, :]
+        causal_mask = causal_mask | (distance >= window_size)
+    _ATTENTION_MASK_CACHE[key] = causal_mask
+    return causal_mask
+
+
 def causal_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, window_size: Optional[int]) -> torch.Tensor:
     bsz, seq_len, num_heads, head_dim = q.shape
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
     scores = torch.matmul(q, k.transpose(-2, -1)) * (head_dim**-0.5)
-    causal_mask = torch.triu(
-        torch.ones(seq_len, seq_len, device=scores.device, dtype=torch.bool),
-        diagonal=1,
-    )
-    if window_size is not None and window_size > 0 and window_size < seq_len:
-        positions = torch.arange(seq_len, device=scores.device)
-        distance = positions[:, None] - positions[None, :]
-        window_mask = distance >= window_size
-        causal_mask = causal_mask | window_mask
+    causal_mask = get_attention_mask(seq_len, window_size, scores.device)
     min_value = torch.finfo(scores.dtype).min
     scores = scores.masked_fill(causal_mask, min_value)
     attn = torch.softmax(scores.float(), dim=-1).to(q.dtype)
@@ -231,7 +241,7 @@ class GPT(nn.Module):
 
     def forward(self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None, reduction: str = "mean"):
         batch_size, seq_len = idx.shape
-        cos_sin = self.cos[:, :seq_len].to(idx.device), self.sin[:, :seq_len].to(idx.device)
+        cos_sin = self.cos[:, :seq_len], self.sin[:, :seq_len]
         x = self.transformer["wte"](idx)
         x = norm(x)
         x0 = x
@@ -394,9 +404,6 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
             loss = model(x, y)
             if not torch.isfinite(loss):
                 raise RuntimeError(f"Non-finite training loss at step {step}: {loss.item()}")
-            loss_value = float(loss.detach().item())
-            if math.isnan(loss_value) or loss_value > 100.0:
-                raise RuntimeError(f"Exploding training loss at step {step}: {loss_value}")
             train_loss = loss.detach()
             (loss / cfg.grad_accum_steps).backward()
         optimizer_step(optimizer, backend)
@@ -409,6 +416,8 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
         tokens_processed += cfg.total_batch_size
 
         train_loss_value = float(train_loss.item()) if train_loss is not None else float("nan")
+        if math.isnan(train_loss_value) or train_loss_value > 100.0:
+            raise RuntimeError(f"Exploding training loss at step {step}: {train_loss_value}")
         smooth_train_loss = 0.9 * smooth_train_loss + 0.1 * train_loss_value
         debiased = smooth_train_loss / (1 - 0.9**step)
         progress = min(total_training_time / max(cfg.time_budget, 1), 1.0)
