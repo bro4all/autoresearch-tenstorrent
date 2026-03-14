@@ -202,17 +202,17 @@ tokens_per_sec_avg: 583.926726
 ```text
 backend: tt
 tt_device: xla:0
-init_val_bpb: 3.273062
-val_bpb: 2.715864
-training_seconds: 307.391298
-total_seconds: 483.386673
+init_val_bpb: 3.274981
+val_bpb: 2.486103
+training_seconds: 302.168453
+total_seconds: 461.749169
 peak_vram_mb: -1.000000
 mfu_percent: -1.000000
-total_tokens_M: 0.720896
-num_steps: 44
+total_tokens_M: 2.310144
+num_steps: 141
 num_params_M: 3.539012
 depth: 2
-tokens_per_sec_avg: 2345.206275
+tokens_per_sec_avg: 7645.219007
 ```
 
 On the same device and profile, future changes should not reduce `tokens_per_sec_avg` by more than 20% unless they improve `val_bpb` materially.
@@ -225,7 +225,7 @@ On the same device and profile, future changes should not reduce `tokens_per_sec
 
 `profile=tt_singlechip`
 - Default.
-- Current verified N300-safe geometry: `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=8`, `eval_tokens=262144`, `bf16=0`.
+- Current verified N300-safe geometry: `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=64`, `eval_tokens=262144`, `bf16=0`.
 - Keeps the 300-second budget and the same `val_bpb` definition.
 
 `profile=smoke`
@@ -288,6 +288,7 @@ If a TT run fails with unsupported ops or lazy-graph issues:
 - force CPU with `AUTORESEARCH_BACKEND=cpu`
 - keep `AUTORESEARCH_ENABLE_SLIDING_WINDOW=0`
 - keep `AUTORESEARCH_ENABLE_TT_COMPILE=0`
+- keep `AUTORESEARCH_BF16=0` on the current winning N300 path; BF16 currently crashes in the TT MLIR compiler on this stack
 
 If a TT run fails before model code with dispatch/fabric errors:
 

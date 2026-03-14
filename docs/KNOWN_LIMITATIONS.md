@@ -4,6 +4,7 @@
 
 - Sliding-window attention is implemented but default-off.
 - Whole-model `torch.compile(backend="tt")` is experimental and default-off.
+- BF16 remains default-off on the current N300 stack.
 - No CUDA-style fused optimizer path is shipped.
 
 ## Metrics
@@ -26,15 +27,16 @@
 
 - `upstreamish` is for semantic comparison and is not the default one-device TT profile.
 - `tt_singlechip` is the default TT baseline and freezes token/value embeddings by default.
-- The currently verified N300-safe `tt_singlechip` shape is `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=8`, `eval_tokens=262144`, `bf16=0`.
+- The currently verified N300-safe `tt_singlechip` shape is `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=64`, `eval_tokens=262144`, `bf16=0`.
 - `smoke` uses small synthetic/offline-friendly inputs for tests and also freezes token/value embeddings by default.
 - Set `AUTORESEARCH_FREEZE_EMBEDDINGS=0` only if you are intentionally debugging embedding training on your TT-XLA stack.
+- On the tested N300 stack, BF16 and whole-model compile were screened on the winning `tt_singlechip` geometry and were not promoted: BF16 hit a TT MLIR compiler abort, and compile mode remained unstable behind board/runtime bring-up failures.
 
 ## Known Working Intent
 
 - CPU smoke path: supported by the test suite in this repo.
 - TT single-device baseline intent: one TT device with TT-XLA runtime installed and `AUTORESEARCH_PROFILE=tt_singlechip`.
-- Measured on the connected N300, the verified 300-second `tt_singlechip` baseline reached `val_bpb` `3.273062 -> 2.715864` in `307.391298` training seconds with `44` steps and `2345.206275` average tokens/sec.
+- Measured on the connected N300, the verified 300-second `tt_singlechip` baseline reached `val_bpb` `3.274981 -> 2.486103` in `302.168453` training seconds with `141` steps and `7645.219007` average tokens/sec.
 - Recommended device family for first validation: Wormhole-class single-device targeting.
 
 ## Debugging Guidance
