@@ -7,6 +7,7 @@ This repo is the Tenstorrent single-device port of `karpathy/autoresearch`.
 During autonomous experimentation:
 
 - Only mutate `train.py`.
+- Upstream sync is a separate maintenance workflow. Use [`scripts/check_upstream_sync.sh`](/workdir/autoresearch-tenstorrent/scripts/check_upstream_sync.sh) and [`docs/UPSTREAM_SYNC.md`](/workdir/autoresearch-tenstorrent/docs/UPSTREAM_SYNC.md) outside the experiment loop.
 - Keep `prepare.py`, `configs.py`, `tt_runtime.py`, tests, scripts, and docs frozen.
 - Do not redefine `val_bpb`.
 - Do not change the fixed wall-clock budget policy.

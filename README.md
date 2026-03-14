@@ -311,3 +311,17 @@ Relevant upstream post-fork fixes were reviewed:
 - the `prepare.py --download-workers` fix is already present in this port
 - the explicit non-finite loss fast-fail is already present in this port
 - the research-loop note that `results.tsv` should not be committed has been carried over into the local documentation workflow
+
+## Keeping In Sync
+
+Use the repo sync helper before pulling in upstream changes:
+
+```bash
+./scripts/check_upstream_sync.sh
+```
+
+This repo does not share a normal merge history with upstream, so do not use `git merge upstream/master` as the default sync path. Review the upstream commits, selectively port the useful changes into the TT codebase, and then run the TT validation commands the helper prints.
+
+There is also a thin GitHub Actions report at [`.github/workflows/upstream-sync.yml`](/workdir/autoresearch-tenstorrent/.github/workflows/upstream-sync.yml). It runs on a weekly schedule or manual dispatch, captures the current upstream delta, and uploads the report as an artifact. It does not auto-merge upstream.
+
+Full workflow: [`docs/UPSTREAM_SYNC.md`](/workdir/autoresearch-tenstorrent/docs/UPSTREAM_SYNC.md)
