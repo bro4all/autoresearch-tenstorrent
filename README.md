@@ -134,6 +134,28 @@ AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=smoke AUTORESEARCH_TIME_BUDGET=60 .
 AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_baseline.sh
 ```
 
+## Measured Baseline
+
+Measured on the connected N300 using the official `ghcr.io/tenstorrent/tt-xla-slim:latest` image and the default `smoke` profile:
+
+```text
+backend: tt
+tt_device: xla:0
+init_val_bpb: 1.822148
+val_bpb: 1.449490
+training_seconds: 60.062330
+total_seconds: 175.809362
+peak_vram_mb: -1.000000
+mfu_percent: -1.000000
+total_tokens_M: 0.035072
+num_steps: 137
+num_params_M: 0.123874
+depth: 1
+tokens_per_sec_avg: 583.926726
+```
+
+This is the current TT smoke reference point for the repo. On the same device and profile, future changes should not reduce `tokens_per_sec_avg` by more than 20% unless they improve `val_bpb` materially.
+
 ## Profiles
 
 `profile=upstreamish`
@@ -206,6 +228,8 @@ The repo prints `-1.0` for TT metrics that are not measured honestly.
 commit	val_bpb	memory_gb	status	description
 ```
 
+- Treat the checked-in `results.tsv` as a template/header file. Record local experiment results there while you work, but do not commit the evolving run log back to git as part of normal experiment iteration.
+
 See [`program.md`](/workdir/autoresearch-tenstorrent/program.md) for the Tenstorrent-specific protocol.
 
 ## Known Limitations
@@ -254,3 +278,13 @@ TT_VISIBLE_DEVICES=0 ./scripts/check_tt_env.sh
 ## License
 
 MIT. Upstream-derived logic from `karpathy/autoresearch` is retained under the same license terms.
+
+## Upstream Sync Status
+
+This fork has been checked against upstream `karpathy/autoresearch` through `upstream/master` commit `c2450ad`.
+
+Relevant upstream post-fork fixes were reviewed:
+
+- the `prepare.py --download-workers` fix is already present in this port
+- the explicit non-finite loss fast-fail is already present in this port
+- the research-loop note that `results.tsv` should not be committed has been carried over into the local documentation workflow

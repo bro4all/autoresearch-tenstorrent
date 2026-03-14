@@ -24,13 +24,14 @@ commit	val_bpb	memory_gb	status	description
 ```
 
 4. Establish a baseline first. Do not mutate `train.py` before the first baseline run.
+5. Keep `results.tsv` as a local experiment log. Do not commit ongoing run history back to git during the search loop.
 
 ## Baseline Command
 
 Run the default one-device TT baseline with:
 
 ```bash
-AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip python train.py --experiment --description baseline
+AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_baseline.sh --experiment --description baseline
 ```
 
 Use `AUTORESEARCH_PROFILE=smoke` and `AUTORESEARCH_TIME_BUDGET=60` for faster TT smoke validation.
@@ -65,7 +66,7 @@ Guidelines:
 4. Run:
 
 ```bash
-AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip python train.py --experiment --description "<idea>"
+AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_baseline.sh --experiment --description "<idea>"
 ```
 
 5. Parse the summary block from the log.
@@ -81,7 +82,7 @@ If a TT run stops making progress:
 - Example:
 
 ```bash
-pkill -f "python train.py"
+pkill -f "run_tt_baseline.sh|python train.py"
 ```
 
 Treat a hung run as `crash` in `results.tsv`.
