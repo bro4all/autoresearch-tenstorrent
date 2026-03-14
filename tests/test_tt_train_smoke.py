@@ -116,6 +116,7 @@ def test_300s_baseline_run(monkeypatch, tmp_path):
         {
             "AUTORESEARCH_BACKEND": "tt",
             "AUTORESEARCH_PROFILE": "tt_singlechip",
+            "AUTORESEARCH_TIME_BUDGET": "300",
             "AUTORESEARCH_CACHE_DIR": str(tmp_path / "cache"),
         },
     )
