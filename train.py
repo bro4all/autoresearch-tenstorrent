@@ -394,6 +394,9 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
             loss = model(x, y)
             if not torch.isfinite(loss):
                 raise RuntimeError(f"Non-finite training loss at step {step}: {loss.item()}")
+            loss_value = float(loss.detach().item())
+            if math.isnan(loss_value) or loss_value > 100.0:
+                raise RuntimeError(f"Exploding training loss at step {step}: {loss_value}")
             train_loss = loss.detach()
             (loss / cfg.grad_accum_steps).backward()
         optimizer_step(optimizer, backend)

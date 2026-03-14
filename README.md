@@ -22,6 +22,8 @@ The TT port adds a few support files around that core:
 
 By design, training runs for a **fixed 5-minute time budget** excluding early compile/warmup steps when practical. The metric is still **`val_bpb`** (validation bits per byte) and its meaning is unchanged from upstream.
 
+If you are new to neural networks, upstream links to this ["Dummy's Guide"](https://x.com/hooeem/status/2030720614752039185) for extra context.
+
 ## Quick start
 
 **Requirements:** one Tenstorrent device, Ubuntu 22.04-class host, Python 3.12, and a documented TT-XLA runtime path. The documented default path for this repo is `pip` and shell scripts, not `uv`.
@@ -134,6 +136,18 @@ PY
 ```
 
 Like upstream, this code is intentionally not trying to be every platform at once. The baseline path here is one TT device. CPU exists for smoke tests and debugging only.
+
+## Tuning smaller TT runs
+
+The upstream README recently added guidance for much smaller machines. The TT fork already bakes a lot of that thinking into `profile=smoke` and `profile=tt_singlechip`, but the same knobs still matter here:
+
+1. Lower `AUTORESEARCH_MAX_SEQ_LEN` first if you need an easier compiler/runtime shape.
+2. Lower `AUTORESEARCH_EVAL_TOKENS` if evaluation overhead dominates iteration time.
+3. Lower `AUTORESEARCH_DEPTH` to reduce model size quickly while preserving the same training loop and metric.
+4. Keep `AUTORESEARCH_WINDOW_PATTERN=L` and `AUTORESEARCH_ENABLE_SLIDING_WINDOW=0` unless you are intentionally validating the alternate attention path.
+5. Sweep `AUTORESEARCH_DEVICE_BATCH_SIZE` and `AUTORESEARCH_TOTAL_BATCH_SIZE` together. On the tested N300 path, larger device microbatches were the main throughput win.
+
+If you are forking this repo to another TT stack or a much smaller shape, start from `profile=smoke`, keep the TT-specific guardrails on, and only then scale features back up.
 
 ## Preparing data
 

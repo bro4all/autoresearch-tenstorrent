@@ -16,16 +16,17 @@ During autonomous experimentation:
 
 Before the first research run:
 
-1. Verify the TT runtime path with `./scripts/check_tt_env.sh`.
-2. Verify prepared data exists under `~/.cache/autoresearch` or your `AUTORESEARCH_CACHE_DIR`.
-3. Initialize `results.tsv` with:
+1. Read `README.md` for the current TT runtime, profile, and baseline context.
+2. Verify the TT runtime path with `./scripts/check_tt_env.sh`.
+3. Verify prepared data exists under `~/.cache/autoresearch` or your `AUTORESEARCH_CACHE_DIR`.
+4. Initialize `results.tsv` with:
 
 ```text
 commit	val_bpb	memory_gb	status	description
 ```
 
-4. Establish a baseline first. Do not mutate `train.py` before the first baseline run.
-5. Keep `results.tsv` as a local experiment log. Do not commit ongoing run history back to git during the search loop.
+5. Establish a baseline first. Do not mutate `train.py` before the first baseline run.
+6. Keep `results.tsv` as a local experiment log. Do not commit ongoing run history back to git during the search loop.
 
 ## Baseline Command
 
@@ -71,8 +72,14 @@ AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_base
 ```
 
 5. Parse the summary block from the log.
-6. If `val_bpb` improved, keep the commit.
-7. If `val_bpb` regressed or the run crashed, revert only the candidate change in `train.py`.
+6. If the summary is missing, read the Python traceback from the log before changing code. A minimal triage command is:
+
+```bash
+tail -n 50 run.log
+```
+
+7. If `val_bpb` improved, keep the commit.
+8. If `val_bpb` regressed or the run crashed, revert only the candidate change in `train.py`.
 
 ## Hung Runs
 
