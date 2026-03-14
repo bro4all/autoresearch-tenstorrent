@@ -34,10 +34,10 @@ tt_reset_and_wait() {
   device="$(tt_reset_device_id)"
   wait_secs="${AUTORESEARCH_TT_RESET_WAIT_SECS:-30}"
   smi_timeout="${AUTORESEARCH_TT_SMI_TIMEOUT_SECS:-30}"
-  echo "Resetting Tenstorrent device ${device} and waiting ${wait_secs}s for link retraining..." >&2
+  echo "Resetting Tenstorrent device ${device} and waiting up to ${wait_secs}s for link retraining..." >&2
   timeout "${smi_timeout}" tt-smi --reset "${device}" >/dev/null
   export AUTORESEARCH_TT_HOST_RESET_DONE=1
-  sleep "${wait_secs}"
+  tt_wait_for_management "${wait_secs}"
 }
 
 tt_maybe_host_reset() {
@@ -72,6 +72,22 @@ tt_management_healthy() {
   cat "${log_file}" >&2
   rm -f "${log_file}"
   return 1
+}
+
+tt_wait_for_management() {
+  local max_wait poll_secs elapsed
+  max_wait="${1:-${AUTORESEARCH_TT_RESET_WAIT_SECS:-30}}"
+  poll_secs="${AUTORESEARCH_TT_RESET_POLL_SECS:-5}"
+  elapsed=0
+  while (( elapsed < max_wait )); do
+    if tt_management_healthy >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "${poll_secs}"
+    elapsed=$((elapsed + poll_secs))
+  done
+  echo "TT board management did not recover within ${max_wait}s after reset." >&2
+  tt_management_healthy
 }
 
 tt_host_preflight() {

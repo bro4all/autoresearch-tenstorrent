@@ -120,7 +120,7 @@ TT environment check:
 TT_VISIBLE_DEVICES=0 ./scripts/check_tt_env.sh
 ```
 
-The TT shell wrappers now do a host-side board-management preflight before JAX or `torch_xla` starts. If `tt-smi -ls` is unhealthy, the wrapper performs a bounded host reset and re-checks the board before launching Python. If you want an unconditional host-side reset before the run, set `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Use `AUTORESEARCH_TT_PREFLIGHT_RETRIES`, `AUTORESEARCH_TT_LIST_TIMEOUT_SECS`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, and `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` to tune recovery on unstable N300 hosts.
+The TT shell wrappers now do a host-side board-management preflight before JAX or `torch_xla` starts. If `tt-smi -ls` is unhealthy, the wrapper performs a bounded host reset and waits until board management actually recovers before launching Python. If you want an unconditional host-side reset before the run, set `AUTORESEARCH_TT_RESET_BEFORE_RUN=1`. Use `AUTORESEARCH_TT_PREFLIGHT_RETRIES`, `AUTORESEARCH_TT_LIST_TIMEOUT_SECS`, `AUTORESEARCH_TT_RESET_WAIT_SECS`, `AUTORESEARCH_TT_RESET_POLL_SECS`, and `AUTORESEARCH_TT_SMI_TIMEOUT_SECS` to tune recovery on unstable N300 hosts.
 
 60-second TT smoke run:
 
@@ -134,9 +134,11 @@ AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=smoke AUTORESEARCH_TIME_BUDGET=60 .
 AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_baseline.sh
 ```
 
-## Measured Baseline
+## Measured Baselines
 
-Measured on the connected N300 using the official `ghcr.io/tenstorrent/tt-xla-slim:latest` image and the default `smoke` profile:
+Measured on the connected N300 using the official `ghcr.io/tenstorrent/tt-xla-slim:latest` image.
+
+60-second `smoke` profile reference:
 
 ```text
 backend: tt
@@ -154,7 +156,25 @@ depth: 1
 tokens_per_sec_avg: 583.926726
 ```
 
-This is the current TT smoke reference point for the repo. On the same device and profile, future changes should not reduce `tokens_per_sec_avg` by more than 20% unless they improve `val_bpb` materially.
+300-second `tt_singlechip` baseline reference:
+
+```text
+backend: tt
+tt_device: xla:0
+init_val_bpb: 3.273062
+val_bpb: 2.715864
+training_seconds: 307.391298
+total_seconds: 483.386673
+peak_vram_mb: -1.000000
+mfu_percent: -1.000000
+total_tokens_M: 0.720896
+num_steps: 44
+num_params_M: 3.539012
+depth: 2
+tokens_per_sec_avg: 2345.206275
+```
+
+These are the current TT reference points for the repo. On the same device and profile, future changes should not reduce `tokens_per_sec_avg` by more than 20% unless they improve `val_bpb` materially.
 
 ## Profiles
 
@@ -166,6 +186,7 @@ This is the current TT smoke reference point for the repo. On the same device an
 - Default.
 - Uses a smaller model and shorter sequence length so a single TT device can complete an honest baseline run.
 - Keeps the 300-second training budget, the exact `val_bpb` definition, and the same `results.tsv` workflow.
+- Current verified default geometry on the tested N300 stack: `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=8`, `eval_tokens=262144`, `bf16=0`.
 - Freezes token and value embeddings by default on TT for runtime stability. Override with `AUTORESEARCH_FREEZE_EMBEDDINGS=0` if you want to debug embedding training on your stack.
 
 `profile=smoke`
@@ -188,6 +209,7 @@ Required env overrides supported by [`configs.py`](/workdir/autoresearch-tenstor
 - `AUTORESEARCH_ENABLE_SLIDING_WINDOW`
 - `AUTORESEARCH_ENABLE_TT_COMPILE`
 - `AUTORESEARCH_SEED`
+- `AUTORESEARCH_BF16`
 - `AUTORESEARCH_FREEZE_EMBEDDINGS`
 
 Useful extra override:
@@ -251,6 +273,7 @@ If a TT run fails with unsupported ops or lazy graph issues:
 - Force CPU with `AUTORESEARCH_BACKEND=cpu` to separate correctness bugs from lowering bugs.
 - Keep `AUTORESEARCH_ENABLE_SLIDING_WINDOW=0`.
 - Keep `AUTORESEARCH_ENABLE_TT_COMPILE=0`.
+- If you hit a TT compiler assert on `tt_singlechip`, start by reducing `AUTORESEARCH_MAX_SEQ_LEN` or `AUTORESEARCH_DEPTH` before changing the model math.
 
 If a TT run fails before model code with messages like `Read unexpected run_mailbox value from core` or `Timeout waiting for Ethernet core service remote IO request flush`:
 

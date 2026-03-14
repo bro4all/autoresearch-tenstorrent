@@ -34,6 +34,7 @@ This repo preserves the upstream `prepare.py` semantic contract while intentiona
 5. TT-friendly default profile added.
    - `profile=tt_singlechip` is smaller than the H100-oriented upstream baseline.
    - The goal is correctness and completion on one TT device, not parity with H100 throughput.
+   - The currently verified N300-safe default is `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=8`, `eval_tokens=262144`, `bf16=0`.
 
 6. Experimental features are opt-in.
    - Sliding-window attention exists but defaults off.
@@ -54,6 +55,7 @@ This repo preserves the upstream `prepare.py` semantic contract while intentiona
 10. Host-side TT preflight added for N300 stability.
    - The documented TT entrypoints now require `tt-smi -ls` to succeed on the host before they launch JAX or `torch_xla`.
    - If board management is unhealthy, the wrappers perform a bounded host reset and re-check the board before the Python process starts.
+   - Reset recovery now polls for board-management health instead of sleeping a fixed interval, because this N300 host often retrains more slowly after TT runtime/compiler aborts.
    - Reset ownership is intentionally kept in shell wrappers so direct `python train.py` remains simple and container probes stay probe-only.
 
 ## Why TT-XLA
