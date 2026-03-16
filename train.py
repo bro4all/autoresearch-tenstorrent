@@ -41,9 +41,11 @@ from tt_runtime import (
 )
 
 
-DEFAULT_MLP_EXPANSION = 4
-LOGIT_SOFTCAP = 15.0
+DEFAULT_MLP_EXPANSION = 6
+LOGIT_SOFTCAP = 0.0  # disabled softcap
 TT_EVAL_ACCUM_STEPS = 4
+WARMDOWN_RATIO = 0.3
+FINAL_LR_FRAC = 0.1
 _ATTENTION_MASK_CACHE: Dict[Tuple[str, int, int], torch.Tensor] = {}
 _TOKEN_BYTES_CACHE: Dict[str, torch.Tensor] = {}
 
@@ -253,7 +255,8 @@ class GPT(nn.Module):
             x = block(x, ve, cos_sin, self.window_sizes[i])
         x = norm(x)
         logits = self.lm_head(x).float()
-        logits = LOGIT_SOFTCAP * torch.tanh(logits / LOGIT_SOFTCAP)
+        if LOGIT_SOFTCAP > 0:
+            logits = LOGIT_SOFTCAP * torch.tanh(logits / LOGIT_SOFTCAP)
         if targets is None:
             return logits
         flat_loss = F.cross_entropy(
@@ -400,6 +403,17 @@ def append_results_row(summary: Dict[str, float | str], status: str, description
         handle.write(row)
 
 
+def get_lr_multiplier(progress: float) -> float:
+    warmup_ratio = 0.0
+    if progress < warmup_ratio:
+        return progress / warmup_ratio if warmup_ratio > 0 else 1.0
+    elif progress < 1.0 - WARMDOWN_RATIO:
+        return 1.0
+    else:
+        cooldown = (1.0 - progress) / WARMDOWN_RATIO if WARMDOWN_RATIO > 0 else 0.0
+        return cooldown * 1.0 + (1 - cooldown) * FINAL_LR_FRAC
+
+
 def run_training(cfg: TrainConfig, experiment: bool = False, description: str = "baseline") -> Dict[str, float | str]:
     t_start = time.time()
     backend = get_backend(cfg.backend)
@@ -429,10 +443,11 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
     model_dtype = torch.bfloat16 if (backend == "tt" and cfg.bf16) else torch.float32
     model = model.to(device=device, dtype=model_dtype)
     maybe_freeze_tt_embeddings(model, cfg, backend)
+    adam_beta1 = 0.8  # upstream uses 0.8 for AdamW groups
     optimizer = torch.optim.AdamW(
         [param for param in model.parameters() if param.requires_grad],
         lr=cfg.learning_rate,
-        betas=(cfg.adam_beta1, cfg.adam_beta2),
+        betas=(adam_beta1, cfg.adam_beta2),
         weight_decay=cfg.weight_decay,
     )
     model = maybe_compile_model(model, cfg, backend)
@@ -463,7 +478,16 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
     model.train()
     optimizer.zero_grad(set_to_none=True)
 
+    base_lr = cfg.learning_rate
+
     while True:
+        # LR schedule based on training progress
+        progress = min(total_training_time / max(cfg.time_budget, 1), 1.0)
+        lr_mult = get_lr_multiplier(progress)
+        current_lr = base_lr * lr_mult
+        for pg in optimizer.param_groups:
+            pg["lr"] = current_lr
+
         t0 = time.time()
         train_loss = None
         for _ in range(cfg.grad_accum_steps):
@@ -489,7 +513,7 @@ def run_training(cfg: TrainConfig, experiment: bool = False, description: str = 
         tok_per_sec = cfg.total_batch_size / max(dt, 1e-6)
         remaining = max(0.0, cfg.time_budget - total_training_time)
         print(
-            f"\rstep {step:05d} ({100*progress:5.1f}%) | loss: {debiased:.6f} | "
+            f"\rstep {step:05d} ({100*progress:5.1f}%) | loss: {debiased:.6f} | lr: {lr_mult:.2f} | "
             f"dt: {dt*1000:.0f}ms | tok/sec: {int(tok_per_sec):,} | epoch: {epoch} | "
             f"remaining: {remaining:.0f}s",
             end="",

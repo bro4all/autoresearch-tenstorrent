@@ -112,9 +112,9 @@ TT_SINGLECHIP = TrainConfig(
     enable_sliding_window=False,
     enable_tt_compile=False,
     seed=42,
-    learning_rate=6e-4,
-    weight_decay=0.1,
-    adam_beta1=0.9,
+    learning_rate=0.01,
+    weight_decay=0.0,
+    adam_beta1=0.8,
     adam_beta2=0.95,
     warmup_steps=3,
     tokenizer_batch_size=128,
@@ -122,7 +122,7 @@ TT_SINGLECHIP = TrainConfig(
     smoke_data=False,
     synthetic_data=False,
     bf16=False,
-    freeze_embeddings=True,
+    freeze_embeddings=False,
     experimental_compile_options={"optimization_level": 1},
 )
 

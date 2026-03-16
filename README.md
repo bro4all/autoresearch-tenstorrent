@@ -6,13 +6,22 @@ The idea is the same as upstream: give an AI agent a small but real LLM training
 
 This repo is not an in-place edit of upstream. It is a fresh TT-focused implementation that stays close to upstream semantics where it matters: fixed training budget, `val_bpb` as the optimization target, `results.tsv` logging, and a minimal repo shape that a future autonomous coding loop can still use.
 
+## Human control surface
+
+Like upstream, this project is meant to be steered from two directions:
+
+- the **agent** mainly edits `train.py`
+- the **human** mainly edits `program.md`
+
+That split matters. `train.py` is the search surface for model and training ideas, while `program.md` is the research org code that tells the agent how to validate, when to revert, what counts as evidence, and how cautious it should be with TT hardware. In practice you are programming both the model and the local research protocol.
+
 ## How it works
 
 The repo is still deliberately small. The files that matter most are:
 
 - **`prepare.py`**: fixed constants, one-time data prep, tokenizer, dataloader, evaluation. Keep this frozen during research runs.
 - **`train.py`**: the single file the agent edits during autonomous experimentation. Model, optimizer, training loop, architecture, and research ideas live here.
-- **`program.md`**: the baseline agent protocol for TT runs.
+- **`program.md`**: the baseline agent protocol for TT runs. This is where the human encodes the experiment workflow and guardrails.
 
 The TT port adds a few support files around that core:
 
@@ -20,7 +29,7 @@ The TT port adds a few support files around that core:
 - **`tt_runtime.py`**: runtime/device glue so the code never branches on CUDA directly
 - **`scripts/run_tt_smoke.sh` / `scripts/run_tt_baseline.sh`**: the preferred TT entrypoints with host-side preflight and recovery
 
-By design, training runs for a **fixed 5-minute time budget** excluding early compile/warmup steps when practical. The metric is still **`val_bpb`** (validation bits per byte) and its meaning is unchanged from upstream.
+By design, training runs for a **fixed 5-minute time budget** excluding early compile/warmup steps when practical. The metric is still **`val_bpb`** (validation bits per byte) and its meaning is unchanged from upstream. This keeps experiments comparable within the same hardware/runtime path even when the agent changes architecture or batch shape.
 
 If you are new to neural networks, upstream links to this ["Dummy's Guide"](https://x.com/hooeem/status/2030720614752039185) for extra context.
 
@@ -64,7 +73,7 @@ AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_base
 
 If the above commands work, the TT path is live and you can move into autonomous research mode.
 
-## Running the agent
+## Autonomous research workflow
 
 Point your coding agent at [`program.md`](/workdir/autoresearch-tenstorrent/program.md). A minimal prompt is still:
 
@@ -73,6 +82,17 @@ Hi, have a look at program.md and let's kick off a new experiment. Let's do the 
 ```
 
 The protocol remains intentionally lightweight. The main difference from upstream is that the baseline training path is TT-XLA on one Tenstorrent device, and `train.py` is still the intended mutation target during experimentation.
+
+A typical loop on this fork looks like:
+
+1. Establish the real TT baseline on `AUTORESEARCH_PROFILE=tt_singlechip`.
+2. Try a small candidate edit in `train.py`.
+3. Screen it with a 60-second TT smoke run first.
+4. Promote only promising candidates to the full 300-second `tt_singlechip` baseline.
+5. Revert regressions immediately and keep only changes that help `val_bpb` and do not materially hurt TT throughput.
+6. Keep `results.tsv` as a local run log, but keep the git-tracked file header-only.
+
+That is the intended "autoresearch" loop here: fast TT smoke for triage, full TT baseline for evidence, and minimal code churn outside `train.py`.
 
 ## Project structure
 
@@ -101,7 +121,10 @@ pyproject.toml   — Python dependencies
 - `profile=tt_singlechip` is the default profile and is much smaller than the H100-oriented upstream defaults.
 - Sliding-window attention and whole-model compile stay behind flags and are default-off.
 - TT-only unavailable metrics such as `peak_vram_mb` and `mfu_percent` print `-1.0`.
-- TT-friendly profiles currently freeze token/value embeddings by default because the tested N300 + TT-XLA stack still becomes non-finite on the real baseline geometry when those embeddings are trained normally.
+- Token/value embeddings are now unfrozen by default (previously frozen for stability with the lower LR; stable at LR=0.01 with beta1=0.8).
+- MLP expansion is 6x (upstream uses 4x; 6x fits in N300 DRAM and improves val_bpb).
+- Adam beta1 is 0.8 (matches upstream's AdamW groups).
+- LR warmdown schedule (30% of budget, floor 0.1) is applied in the training loop.
 
 Full deviation log: [`docs/PORTING_NOTES.md`](/workdir/autoresearch-tenstorrent/docs/PORTING_NOTES.md)
 
@@ -149,6 +172,14 @@ The upstream README recently added guidance for much smaller machines. The TT fo
 
 If you are forking this repo to another TT stack or a much smaller shape, start from `profile=smoke`, keep the TT-specific guardrails on, and only then scale features back up.
 
+The right bring-up order is:
+
+1. synthetic or offline-friendly smoke data first
+2. real prepared data once the runtime path is stable
+3. only then consider changing tokenizer size, data complexity, or other prepare-path assumptions
+
+That last category is a separate porting exercise, not part of the default autonomous loop in this repo. During normal research runs, `prepare.py` stays frozen and only `train.py` should move.
+
 ## Preparing data
 
 Full upstream-compatible data and tokenizer prep:
@@ -189,6 +220,16 @@ AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=smoke AUTORESEARCH_TIME_BUDGET=60 .
 AUTORESEARCH_BACKEND=tt AUTORESEARCH_PROFILE=tt_singlechip ./scripts/run_tt_baseline.sh
 ```
 
+## Comparison contract
+
+What counts as a real result on this fork:
+
+- Compare runs only on the same hardware path and same profile.
+- TT runs on the connected N300 are the benchmark evidence.
+- CPU runs are for cheap smoke tests and debugging only.
+- `tokens_per_sec_avg` here is training throughput for a small GPT-style causal LM in this repo, not inference throughput for a pretrained LLM.
+- `val_bpb` semantics stay fixed. If that definition changes, the comparison is no longer valid.
+
 ## Measured baselines
 
 Measured on the connected N300 using `ghcr.io/tenstorrent/tt-xla-slim:latest`.
@@ -216,20 +257,33 @@ tokens_per_sec_avg: 609.449898
 ```text
 backend: tt
 tt_device: xla:0
-init_val_bpb: 3.274981
-val_bpb: 2.421392
-training_seconds: 300.986748
-total_seconds: 446.012818
+init_val_bpb: 3.274888
+val_bpb: 1.983337
+training_seconds: 301.952808
+total_seconds: 479.539624
 peak_vram_mb: -1.000000
 mfu_percent: -1.000000
-total_tokens_M: 2.867200
-num_steps: 175
-num_params_M: 3.539012
+total_tokens_M: 2.621440
+num_steps: 160
+num_params_M: 3.670084
 depth: 2
-tokens_per_sec_avg: 9526.000778
+tokens_per_sec_avg: 8681.621543
 ```
 
 On the same device and profile, future changes should not reduce `tokens_per_sec_avg` by more than 20% unless they improve `val_bpb` materially.
+
+## Current best
+
+This repo is intentionally a tiny single-device TT research rig, not a production inference stack. The current verified best baseline on the connected N300 is the 300-second `tt_singlechip` run above: `val_bpb 1.983337`, `tokens_per_sec_avg 8681.621543`, `num_steps 160`.
+
+Key optimizations over the original baseline (`val_bpb 2.421`):
+- Learning rate increased from 6e-4 to 1e-2 (16.7x higher)
+- Adam beta1 reduced from 0.9 to 0.8 (matches upstream)
+- MLP expansion increased from 4x to 6x
+- Token/value embeddings unfrozen (were frozen for stability)
+- 30% LR warmdown schedule with 0.1 floor added
+
+That is the bar future work should beat while preserving `val_bpb` semantics and keeping TT-XLA as the primary backend.
 
 ## Profiles
 
@@ -239,7 +293,7 @@ On the same device and profile, future changes should not reduce `tokens_per_sec
 
 `profile=tt_singlechip`
 - Default.
-- Current verified N300-safe geometry: `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=64`, `eval_tokens=262144`, `bf16=0`.
+- Current verified N300-safe geometry: `max_seq_len=256`, `depth=2`, `total_batch_size=16384`, `device_batch_size=64`, `eval_tokens=262144`, `bf16=0`, `lr=0.01`, `freeze_embeddings=0`.
 - Keeps the 300-second budget and the same `val_bpb` definition.
 
 `profile=smoke`
