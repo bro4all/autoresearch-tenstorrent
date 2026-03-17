@@ -8,3 +8,7 @@ tmp/
 .cache-smoke/
 .cache-ttperf/
 .cache-tt300/
+*.egg-info/
+.coverage
+*.log
+results.tsv

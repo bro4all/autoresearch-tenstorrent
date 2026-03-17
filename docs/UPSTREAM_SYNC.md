@@ -103,4 +103,4 @@ After each upstream review, note:
 - TT validation commands run
 - measured TT smoke/baseline results if they changed
 
-Update [`docs/PORTING_NOTES.md`](/workdir/autoresearch-tenstorrent/docs/PORTING_NOTES.md) or the README if the TT defaults or known deviations change.
+Update [`docs/PORTING_NOTES.md`](PORTING_NOTES.md) or the README if the TT defaults or known deviations change.

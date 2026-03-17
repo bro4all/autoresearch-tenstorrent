@@ -199,7 +199,7 @@ def load_config() -> TrainConfig:
         "depth": _env_override("AUTORESEARCH_DEPTH", cfg.depth),
         "total_batch_size": _env_override("AUTORESEARCH_TOTAL_BATCH_SIZE", cfg.total_batch_size),
         "device_batch_size": _env_override("AUTORESEARCH_DEVICE_BATCH_SIZE", cfg.device_batch_size),
-        "eval_batch_size": _env_override("AUTORESEARCH_DEVICE_BATCH_SIZE", cfg.eval_batch_size),
+        "eval_batch_size": _env_override("AUTORESEARCH_EVAL_BATCH_SIZE", cfg.eval_batch_size),
         "window_pattern": _env_override("AUTORESEARCH_WINDOW_PATTERN", cfg.window_pattern),
         "enable_sliding_window": _env_override(
             "AUTORESEARCH_ENABLE_SLIDING_WINDOW", cfg.enable_sliding_window

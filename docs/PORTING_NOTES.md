@@ -17,7 +17,7 @@ This repo preserves the upstream `prepare.py` semantic contract while intentiona
 
 1. CUDA backend replaced with TT-XLA.
    - Upstream assumes one NVIDIA GPU and uses `torch.cuda.*`.
-   - This port uses `torch_xla` lazy execution on TT through [`tt_runtime.py`](/workdir/autoresearch-tenstorrent/tt_runtime.py).
+   - This port uses `torch_xla` lazy execution on TT through [`tt_runtime.py`](../tt_runtime.py).
 
 2. FlashAttention dependency removed.
    - Upstream uses FA3/Hopper-oriented fast paths.
@@ -29,7 +29,7 @@ This repo preserves the upstream `prepare.py` semantic contract while intentiona
 
 4. Configs moved out of `train.py`.
    - Upstream edits constants directly in `train.py`.
-   - This repo keeps runtime-tunable values in [`configs.py`](/workdir/autoresearch-tenstorrent/configs.py) so profiles and env overrides are explicit.
+   - This repo keeps runtime-tunable values in [`configs.py`](../configs.py) so profiles and env overrides are explicit.
 
 5. TT-friendly default profile added.
    - `profile=tt_singlechip` is smaller than the H100-oriented upstream baseline.

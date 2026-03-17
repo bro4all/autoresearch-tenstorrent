@@ -42,5 +42,5 @@
 ## Debugging Guidance
 
 - If TT lowering fails, prefer simplifying the offending PyTorch graph over changing frameworks.
-- Use the small repro under [`debug/repro_attention.py`](/workdir/autoresearch-tenstorrent/debug/repro_attention.py) to isolate attention-path issues.
+- Use the small repro under [`debug/repro_attention.py`](../debug/repro_attention.py) to isolate attention-path issues.
 - Use TT-XLA eager mode only for diagnosis.
